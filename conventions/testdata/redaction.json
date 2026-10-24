@@ -1,0 +1,25 @@
+{
+  "description": "Redaction vectors shared by the Rust conventions crate and the TypeScript web SDK (docs/architecture/security.md). kind: header | json | form | url. expected null: the input is not valid JSON and is kept as text without key-based masking. JSON output is compact, as serde_json::to_string and JSON.stringify write it; a body with nothing to mask is returned unchanged.",
+  "cases": [
+    { "name": "authorization header is masked", "kind": "header", "header": "Authorization", "input": "Bearer abc.def", "expected": "[REDACTED]", "count": 1 },
+    { "name": "header names match exactly, not by substring", "kind": "header", "header": "x-authorization-hint", "input": "none", "expected": "none", "count": 0 },
+    { "name": "ordinary header is kept", "kind": "header", "header": "content-type", "input": "application/json", "expected": "application/json", "count": 0 },
+    { "name": "already redacted header is not counted again", "kind": "header", "header": "cookie", "input": "[REDACTED]", "expected": "[REDACTED]", "count": 0 },
+    { "name": "extra key masks a header", "kind": "header", "extra_keys": ["x-tenant-key"], "header": "X-Tenant-Key", "input": "t-1", "expected": "[REDACTED]", "count": 1 },
+    { "name": "top-level password", "kind": "json", "input": "{\"username\":\"demo\",\"password\":\"demo-password\"}", "expected": "{\"username\":\"demo\",\"password\":\"[REDACTED]\"}", "count": 1 },
+    { "name": "nested objects and arrays; key contains a pattern; case-insensitive", "kind": "json", "input": "{\"user\":{\"name\":\"a\",\"Password\":\"x\"},\"items\":[{\"access_token\":\"t\"},{\"id\":1}],\"sessionId\":\"s\"}", "expected": "{\"user\":{\"name\":\"a\",\"Password\":\"[REDACTED]\"},\"items\":[{\"access_token\":\"[REDACTED]\"},{\"id\":1}],\"sessionId\":\"[REDACTED]\"}", "count": 3 },
+    { "name": "non-string and object values under a sensitive key are masked whole", "kind": "json", "input": "{\"cvv\":123,\"credentials\":{\"user\":\"a\",\"pin\":1}}", "expected": "{\"cvv\":\"[REDACTED]\",\"credentials\":\"[REDACTED]\"}", "count": 2 },
+    { "name": "already redacted value is not counted again", "kind": "json", "input": "{\"password\":\"[REDACTED]\"}", "expected": "{\"password\":\"[REDACTED]\"}", "count": 0 },
+    { "name": "key order is kept", "kind": "json", "input": "{\"b\":1,\"token\":\"x\",\"a\":2}", "expected": "{\"b\":1,\"token\":\"[REDACTED]\",\"a\":2}", "count": 1 },
+    { "name": "body without sensitive keys is returned unchanged", "kind": "json", "input": "{ \"text\": \"hello\" }", "expected": "{ \"text\": \"hello\" }", "count": 0 },
+    { "name": "top-level array", "kind": "json", "input": "[{\"secret\":\"s\"}]", "expected": "[{\"secret\":\"[REDACTED]\"}]", "count": 1 },
+    { "name": "invalid JSON is kept as text", "kind": "json", "input": "password=hunter2", "expected": null, "count": 0 },
+    { "name": "non-ASCII values survive", "kind": "json", "input": "{\"name\":\"Олена\",\"token\":\"т\"}", "expected": "{\"name\":\"Олена\",\"token\":\"[REDACTED]\"}", "count": 1 },
+    { "name": "extra key masks a JSON key", "kind": "json", "extra_keys": ["ssn"], "input": "{\"ssn\":\"123\",\"zip\":\"1\"}", "expected": "{\"ssn\":\"[REDACTED]\",\"zip\":\"1\"}", "count": 1 },
+    { "name": "form fields", "kind": "form", "input": "user=demo&password=secret&remember=1", "expected": "user=demo&password=[REDACTED]&remember=1", "count": 1 },
+    { "name": "percent-encoded field name", "kind": "form", "input": "pass%77ord=x&a=b", "expected": "pass%77ord=[REDACTED]&a=b", "count": 1 },
+    { "name": "field without a value is kept", "kind": "form", "input": "token&a=1", "expected": "token&a=1", "count": 0 },
+    { "name": "query parameters in a URL; fragment kept", "kind": "url", "input": "http://localhost:8080/api/x?token=abc&q=1#top", "expected": "http://localhost:8080/api/x?token=[REDACTED]&q=1#top", "count": 1 },
+    { "name": "URL without a query", "kind": "url", "input": "http://localhost:8080/api/notes", "expected": "http://localhost:8080/api/notes", "count": 0 }
+  ]
+}

@@ -1,21 +1,25 @@
 # Interfaces
 
-Status: design (2026-10-23). Names, ports and defaults below are the plan for the MVP; they become binding when the
-code exists. Once the `conventions` crate exists, it is the source of truth for attribute keys, and this file links
-to it instead of listing them.
+Status (2026-10-24): the collector side of sections 1, 3 and 4 is implemented; the SDK sections are still the plan.
+Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
+(`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
 ## 1. OTLP ingest (SDKs → collector)
 
 - `POST /v1/traces` on the ingest listener (default `127.0.0.1:4318`, the standard OTLP/HTTP port).
-- Content types: `application/x-protobuf` (Rust SDK) and `application/json` (web SDK). Response follows the OTLP
-  spec: `200` with partial-success details, `400` malformed, `413` body too large, `503` + `Retry-After` when the
-  ingest limit is reached.
+- Content types: `application/x-protobuf` (Rust SDK) and `application/json` (web SDK); anything else gets `415`.
+  No `Content-Encoding` support: exporters must send uncompressed bodies (the Rust and JS exporters' default).
+  Response follows the OTLP spec: `200` with partial-success details (spans with invalid ids or over the per-request
+  bound), `400` malformed, `408` body slower than 10 s, `413` body too large, `503` + `Retry-After: 1` when the
+  ingest concurrency bound is reached.
 - CORS: only for origins listed in `CHEPIO_LENS_CORS_ORIGINS`; allowed method `POST`, allowed header `Content-Type`.
 - OTLP/gRPC is not supported in the MVP (ADR-0001).
 
 ### Attributes the collector reads
 
-Stable OpenTelemetry semantic conventions; the legacy names in brackets are mapped to stable names at ingest.
+Stable OpenTelemetry semantic conventions; the legacy names in brackets are mapped to stable names at ingest, once
+(I8); a stable name present in the same span wins. Exact keys: `conventions/src/keys.rs`, mapping:
+`conventions/src/legacy.rs`.
 
 | Purpose | Attributes |
 |---|---|
@@ -66,8 +70,8 @@ only. Internal contract: the UI and the collector ship in one binary, so no comp
 | Endpoint | Returns |
 |---|---|
 | `GET /api/graph` | `{ nodes, edges, generated_at }` |
-| `GET /api/requests?node=&edge=&status=&limit=&before=` | Request summaries, newest first, cursor by `before` |
-| `GET /api/requests/{trace_id}` | The request with all its spans and attributes |
+| `GET /api/requests?node=&edge=&status=&limit=&before=` | Request summaries, newest first, cursor by `before` (not built yet) |
+| `GET /api/requests/{trace_id}` | The request with all its spans and attributes (not built yet) |
 | `GET /api/events` | Server-Sent Events stream, see below |
 | `POST /api/reset` | Clears requests and graph; `204` |
 | `GET /api/stats` | Collector counters (`runtime.md`, self-observability) |
@@ -77,8 +81,8 @@ SSE events: `node` (node created or changed), `edge` (edge stats changed), `requ
 with the ordered list of edges it touched, used for animation), `resync` (the client fell behind and must fetch
 `/api/graph` again).
 
-Open: how TypeScript types for this API are produced from the Rust types (code generation or a hand-written
-schema). Decided together with the first implementation of this API.
+JSON shapes: `collector/src/types/api.rs`; the UI uses the TypeScript generated from them in `ui/src/api/generated/`
+(ADR-0009).
 
 ## 4. Configuration
 

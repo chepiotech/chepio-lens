@@ -1,0 +1,91 @@
+{
+  "resourceSpans": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "demo-web" } },
+          { "key": "telemetry.sdk.language", "value": { "stringValue": "webjs" } }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": { "name": "hand-written fixture following the OTLP/JSON spec" },
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b1",
+              "name": "GET",
+              "kind": 3,
+              "startTimeUnixNano": "1760000000000000000",
+              "endTimeUnixNano": "1760000000030000000",
+              "attributes": [
+                { "key": "http.request.method", "value": { "stringValue": "GET" } },
+                { "key": "url.full", "value": { "stringValue": "http://localhost:5173/api/notes" } },
+                { "key": "http.response.status_code", "value": { "intValue": "200" } }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "demo-api" } },
+          { "key": "telemetry.sdk.language", "value": { "stringValue": "rust" } }
+        ]
+      },
+      "scopeSpans": [
+        {
+          "scope": { "name": "hand-written fixture following the OTLP/JSON spec" },
+          "spans": [
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b2",
+              "parentSpanId": "00f067aa0ba902b1",
+              "name": "GET /api/notes",
+              "kind": 2,
+              "startTimeUnixNano": "1760000000002000000",
+              "endTimeUnixNano": "1760000000028000000",
+              "attributes": [
+                { "key": "http.request.method", "value": { "stringValue": "GET" } },
+                { "key": "http.route", "value": { "stringValue": "/api/notes" } },
+                { "key": "http.response.status_code", "value": { "intValue": "200" } }
+              ]
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b3",
+              "parentSpanId": "00f067aa0ba902b2",
+              "name": "SELECT demo.notes",
+              "kind": 3,
+              "startTimeUnixNano": "1760000000005000000",
+              "endTimeUnixNano": "1760000000009000000",
+              "attributes": [
+                { "key": "db.system.name", "value": { "stringValue": "postgresql" } },
+                { "key": "server.address", "value": { "stringValue": "db" } },
+                { "key": "server.port", "value": { "intValue": "5432" } },
+                { "key": "db.namespace", "value": { "stringValue": "demo" } },
+                { "key": "db.query.text", "value": { "stringValue": "SELECT id, text FROM notes ORDER BY id DESC LIMIT $1" } }
+              ]
+            },
+            {
+              "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+              "spanId": "00f067aa0ba902b4",
+              "parentSpanId": "00f067aa0ba902b2",
+              "name": "POST",
+              "kind": 3,
+              "startTimeUnixNano": "1760000000010000000",
+              "endTimeUnixNano": "1760000000025000000",
+              "attributes": [
+                { "key": "url.full", "value": { "stringValue": "https://payments.example.com/charge" } },
+                { "key": "server.address", "value": { "stringValue": "payments.example.com" } },
+                { "key": "server.port", "value": { "intValue": "443" } }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

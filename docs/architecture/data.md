@@ -1,7 +1,7 @@
 # Data
 
-Status: design (2026-10-23). The collector has no database: everything lives in a bounded in-memory store and is
-lost on restart (ADR-0005). Bounds and eviction numbers are in `runtime.md`; identity and derivation rules are in
+Status: collector model implemented (2026-10-24). The collector has no database: everything lives in a bounded
+in-memory store and is lost on restart (ADR-0005). Bounds and eviction numbers are in `runtime.md`; identity and derivation rules are in
 `../domain/invariants.md`.
 
 ## Model
@@ -15,10 +15,10 @@ Node * ──── Edge ──── * Node        (graph, aggregated over all 
 
 | Entity | Key | Fields | Notes |
 |---|---|---|---|
-| Span | `trace_id` (16 bytes) + `span_id` (8 bytes) | `parent_span_id`, `service`, `kind` (server, client, internal, producer, consumer), `name`, `start_ns`, `end_ns`, `status` (unset, ok, error + message), normalized attributes, raw attributes, events | Normalized at ingest: legacy semconv names mapped to stable ones, values redacted |
+| Span | `trace_id` (16 bytes) + `span_id` (8 bytes) | `parent_span_id`, `service`, `kind` (server, client, internal, producer, consumer), `name`, `start_ns`, `end_ns`, `status` (unset, ok, error + message), normalized attributes, raw attributes, events | Normalized at ingest: legacy semconv names mapped to stable ones, values redacted. Raw attributes and events are not kept yet |
 | Request | `trace_id` | root span, method, route, status code, duration, services touched, error flag, span count | Summary of a trace, updated as spans arrive |
 | Node | stable string id (see invariants) | `kind` (frontend, service, database, external), label, details (database system, address, namespace), `first_seen`, `last_seen` | Created on first span that implies it |
-| Edge | (`from`, `to`, `protocol`) | `protocol` (http, db), totals (count, errors), latency summary (p50, p95), rate over the last 60 s, `last_seen`, per-route or per-operation breakdown | Updated incrementally on every linked span |
+| Edge | (`from`, `to`, `protocol`) | `protocol` (http, db), totals (count, errors), latency summary (p50, p95), rate over the last 60 s, `last_seen`, per-route or per-operation breakdown (not built yet) | Updated incrementally on every linked span. p50/p95 come from a fixed log-scale histogram (4 buckets per doubling, at most ~19% above the true value); the rate from 60 one-second slots |
 
 ## Storage
 

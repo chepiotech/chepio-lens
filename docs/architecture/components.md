@@ -1,7 +1,8 @@
 # Components
 
-Status: scaffold (2026-10-23): every component below exists as an empty package with a smoke test. Scope of this
-view: the MVP — frontend, backend and database of one instrumented app. Docker and Kubernetes layers are planned later and are not described here.
+Status (2026-10-24): `conventions` and the collector core (ingest, graph, store, UI API, SSE) are implemented; the
+other components are empty packages with a smoke test. Scope of this view: the MVP — frontend, backend and database
+of one instrumented app. Docker and Kubernetes layers are planned later and are not described here.
 
 ## Context
 
@@ -63,6 +64,8 @@ Layers follow the global import groups; arrows show allowed imports.
 | `repositories/` | bounded in-memory `TraceStore` (ADR-0005) | domain, ports |
 | `adapters/` | OTLP decoding (protobuf and JSON) into domain spans; SSE broadcaster | domain, ports |
 | `handlers/` | OTLP/HTTP endpoint, UI API, SSE endpoint, static UI | services, domain |
+| `types/` | Wire types shared by layers: UI API shapes exported to TypeScript (ADR-0009), OTLP encoding, SSE messages | domain |
+| `app.rs` | Composition root: configuration from the environment, wiring of all layers | everything |
 
 ## UI internals
 

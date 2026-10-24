@@ -7,3 +7,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+
+[dependencies]
+# preserve_order keeps the key order of redacted JSON bodies as the app sent them.
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
