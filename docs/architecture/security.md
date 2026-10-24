@@ -23,7 +23,8 @@ the main risk: they carry passwords, tokens and personal data (ADR-0004).
   production builds do not contain it.
 - **Redaction cannot be switched off in the MVP.** Configuration can add keys to the defaults, not remove them.
 - **UI rendering.** No `innerHTML`, no `dangerouslySetInnerHTML`, no `eval` of payload content. The canvas draws
-  text with `fillText`. The UI page sends `Content-Security-Policy: default-src 'self'; connect-src 'self'`.
+  text with `fillText`. Every response on the UI listener sends `Content-Security-Policy: default-src 'self'; connect-src 'self'` and
+  `X-Content-Type-Options: nosniff`.
 - **Fixtures and tests** use fake secrets only; never record real traffic into the repository.
 
 ## Redaction defaults

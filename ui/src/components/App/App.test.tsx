@@ -5,10 +5,12 @@ import { describe, expect, it } from 'vitest'
 import App from './App'
 
 describe('App', () => {
-  it('renders the title and ends with the Chepio credit', () => {
+  it('renders the header, the map canvas and ends with the Chepio credit', () => {
     const html = renderToString(<App />)
 
     expect(html).toContain('chepio-lens</h1>')
+    expect(html).toContain('Connecting…')
+    expect(html).toContain('<canvas')
     expect(html).toMatch(/<footer class="chepio-footer">.*<\/footer><\/div>$/)
     expect(html).toContain('href="https://chepio.tech"')
   })

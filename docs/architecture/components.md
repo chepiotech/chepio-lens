@@ -1,7 +1,7 @@
 # Components
 
-Status (2026-10-24): `conventions`, the collector core (ingest, graph, store, UI API, SSE), the Rust SDK (without
-payload capture) and the demo app are implemented; the UI and the web SDK are empty packages with a smoke test. Scope of this view: the MVP — frontend, backend and database
+Status (2026-10-24): `conventions`, the collector core (ingest, graph, store, UI API, SSE, embedded UI), the Rust SDK
+(without payload capture), the UI map (v0) and the demo app are implemented; the web SDK is an empty package. Scope of this view: the MVP — frontend, backend and database
 of one instrumented app. Docker and Kubernetes layers are planned later and are not described here.
 
 ## Context
@@ -71,6 +71,8 @@ Layers follow the global import groups; arrows show allowed imports.
 
 - React renders the panels (request list, inspector, toolbar) and the page footer with `<ChepioTechFooter />`.
 - The map is one `<canvas>` driven by a renderer module outside React's render cycle (ADR-0006). React passes state
-  in and receives selection events out.
+  in and receives selection events out. `ui/src/map/`: `layoutGraph` (deterministic columns), `geometry` (camera,
+  curves, hit-testing), `graphState` (snapshot + events), `MapRenderer` (canvas drawing and input); only the
+  renderer touches the canvas, so the rest is unit-tested.
 - State: the graph snapshot from `GET /api/graph`, then incremental SSE events; a `resync` event triggers a fresh
   snapshot.

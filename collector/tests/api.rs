@@ -384,3 +384,37 @@ async fn batches_from_the_rust_sdk_show_the_api_and_its_database() {
         "the 500 marks the request: {fail}"
     );
 }
+
+#[tokio::test]
+async fn ui_listener_sends_security_headers_and_serves_or_explains_the_ui() {
+    let app = app(Limits::default());
+    for uri in ["/", "/api/graph", "/healthz"] {
+        let response = app
+            .ui
+            .clone()
+            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let headers = response.headers();
+        assert_eq!(
+            headers[header::CONTENT_SECURITY_POLICY],
+            "default-src 'self'; connect-src 'self'",
+            "{uri}"
+        );
+        assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff", "{uri}");
+        if uri == "/" {
+            // CI runs the Rust tests without building the UI first; both outcomes are valid here.
+            let status = response.status();
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            match status {
+                StatusCode::OK => {
+                    assert!(String::from_utf8_lossy(&body).contains("<div id=\"root\">"))
+                }
+                StatusCode::NOT_FOUND => {
+                    assert!(String::from_utf8_lossy(&body).contains("pnpm --filter ui build"))
+                }
+                other => panic!("unexpected status {other} for /"),
+            }
+        }
+    }
+}

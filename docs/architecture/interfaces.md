@@ -74,8 +74,9 @@ initLens({ serviceName: 'demo-web', endpoint: import.meta.env.VITE_CHEPIO_LENS_E
 
 ## 3. UI API (collector → UI)
 
-Served on the UI listener (default `127.0.0.1:4320`) together with the embedded UI. Same origin, so no CORS. JSON
-only. Internal contract: the UI and the collector ship in one binary, so no compatibility window is needed.
+Served on the UI listener (default `127.0.0.1:4320`) together with the embedded UI (`ui/dist`: embedded in release
+builds, read from disk in debug builds; without a build, `/` answers 404 with how to build it). Same origin, so no
+CORS. JSON only. Internal contract: the UI and the collector ship in one binary, so no compatibility window is needed.
 
 | Endpoint | Returns |
 |---|---|

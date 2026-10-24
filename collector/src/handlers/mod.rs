@@ -1,5 +1,6 @@
 //! HTTP surface: the OTLP ingest listener and the UI listener (`docs/architecture/interfaces.md`, sections 1 and 3).
 
+mod assets;
 mod ingest;
 mod ui;
 
@@ -10,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::Router;
+use axum::middleware::map_response;
 use axum::routing::{get, post};
 use tokio::sync::Semaphore;
 // Services
@@ -58,7 +60,7 @@ pub fn otlp_router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-/// UI API, SSE and health; the embedded UI will be served from this listener too.
+/// UI API, SSE, health and the embedded UI; every response carries the UI's security headers.
 pub fn ui_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/graph", get(ui::graph))
@@ -66,6 +68,8 @@ pub fn ui_router(state: Arc<AppState>) -> Router {
         .route("/api/reset", post(ui::reset))
         .route("/api/stats", get(ui::stats))
         .route("/healthz", get(ui::healthz))
+        .fallback(assets::asset)
+        .layer(map_response(assets::security_headers))
         .with_state(state)
 }
 
