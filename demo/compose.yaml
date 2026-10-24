@@ -1,4 +1,5 @@
-# Demo app for chepio-lens. Every port is published on 127.0.0.1 only; credentials are fake.
+# Demo app for chepio-lens, with the collector watching it. Every port is published on 127.0.0.1 only; credentials
+# are fake.
 name: chepio-lens-demo
 
 services:
@@ -24,11 +25,27 @@ services:
     environment:
       DATABASE_URL: postgres://demo:demo@db:5432/demo
       DEMO_API_ADDR: 0.0.0.0:8080
+      CHEPIO_LENS_ENDPOINT: http://collector:4318
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
       db:
         condition: service_healthy
+      collector:
+        condition: service_started
+
+  collector:
+    build:
+      context: ..
+      dockerfile: collector/Dockerfile
+    environment:
+      # Inside the container the collector must listen on all interfaces; the host sees 127.0.0.1 only
+      # (docs/architecture/security.md, Binding).
+      CHEPIO_LENS_OTLP_ADDR: 0.0.0.0:4318
+      CHEPIO_LENS_UI_ADDR: 0.0.0.0:4320
+    ports:
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:4320:4320"
 
   web:
     build:

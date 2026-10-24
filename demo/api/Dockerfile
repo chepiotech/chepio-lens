@@ -2,7 +2,7 @@
 FROM rust:1.99-slim-trixie AS build
 WORKDIR /src
 COPY . .
-RUN cargo build --release --locked -p demo-api
+RUN cargo build --release --locked -p demo-api --features lens
 
 FROM debian:trixie-slim
 COPY --from=build /src/target/release/demo-api /usr/local/bin/demo-api

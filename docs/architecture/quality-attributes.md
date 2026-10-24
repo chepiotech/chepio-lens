@@ -26,13 +26,22 @@ restarts, production use, authentication.
 
 | Attribute | Target | Measured |
 |---|---|---|
-| Request end → visible on the map | p95 ≤ 2 s | — |
-| Collector ingest throughput | ≥ 2,000 spans/s sustained on a laptop, using < 1 CPU core | — |
-| Collector memory at default bounds | RSS ≤ 300 MiB | — |
-| Collector startup | ≤ 1 s | — |
+| Request end → visible on the map | p95 ≤ 2 s | 0.25 s, one sample (A) |
+| Collector ingest throughput | ≥ 2,000 spans/s sustained on a laptop, using < 1 CPU core | 2,000 spans/s at 0.01 cores; maximum ≈ 374,000 spans/s at 1.6 cores, batch p99 6 ms (B) |
+| Collector memory at default bounds | RSS ≤ 300 MiB | 60 MiB with the store full by count (10,000 requests of 4 spans, no bodies); 3.4 MiB idle (B). Full by bytes (with bodies) not measured yet |
+| Collector startup | ≤ 1 s | 0.56 s to `/healthz` answering (B) |
 | Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | — |
 | Map rendering | 60 fps with 50 nodes, 100 edges, 200 animated requests | — |
 | Collector unavailable | Zero errors and no measurable latency change in the app | — |
+
+Measurement runs (2026-10-24, Apple M1 Pro, 10 cores, 16 GiB, macOS 26.6, release builds, everything on one
+machine over loopback):
+
+- (A) `demo/e2e/backend-db.sh`: time from the last demo request to the database edge reaching the expected count.
+- (B) Collector started with `cargo build --release -p chepio-lens-collector && target/release/chepio-lens`; load from
+  `cargo run --release -p chepio-lens-collector --example ingest_load -- --seconds 20 --workers 4
+  --traces-per-batch 50` (maximum) and `-- --seconds 20 --workers 2 --traces-per-batch 25 --rate 2000`. CPU is the
+  collector's CPU time divided by wall time; RSS from `ps`.
 
 ## Test strategy
 

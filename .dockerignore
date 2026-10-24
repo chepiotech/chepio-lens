@@ -1,4 +1,4 @@
-# Allow-list: only what the demo images build from.
+# Allow-list: only what the demo and collector images build from.
 *
 !Cargo.toml
 !Cargo.lock
@@ -7,7 +7,7 @@
 !conventions/
 !sdk/
 !demo/
-!ui/package.json
+!ui/
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml

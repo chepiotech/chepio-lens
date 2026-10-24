@@ -1,7 +1,8 @@
 # Demo app
 
 The full-stack app that chepio-lens instruments and its end-to-end tests drive: a React page, a Rust API (axum,
-sqlx) and Postgres. Telemetry is off unless the API is built with the cargo feature `lens` (below).
+sqlx) and Postgres. In compose the API is built with the cargo feature `lens` and reports to the collector; built
+without the feature, it has no telemetry.
 
 ## Run
 
@@ -9,13 +10,15 @@ sqlx) and Postgres. Telemetry is off unless the API is built with the cargo feat
 docker compose -f demo/compose.yaml up --build
 ```
 
-Open http://localhost:5173. Every port is published on `127.0.0.1` only:
+Open http://localhost:5173 for the demo and http://localhost:4320 for its live map. Every port is published on
+`127.0.0.1` only:
 
 | Service | Host address | Notes |
 |---|---|---|
 | web | `127.0.0.1:5173` | Vite dev server; proxies `/api` to the API, so the browser stays on one origin |
 | api | `127.0.0.1:8080` | Runs migrations on startup |
 | db | `127.0.0.1:55432` | Postgres 17, user `demo`, password `demo`, database `demo` |
+| collector | `127.0.0.1:4318` (OTLP), `127.0.0.1:4320` (map) | chepio-lens, built from `collector/Dockerfile` with the UI embedded |
 
 ## API
 
@@ -30,6 +33,11 @@ Open http://localhost:5173. Every port is published on `127.0.0.1` only:
 | `GET /api/fail` | Queries a missing table and returns `500` |
 
 Request bodies are limited to 64 KiB.
+
+## End-to-end check
+
+`demo/e2e/backend-db.sh` starts the stack, calls the API and checks that the map shows `demo-api → postgres` with the
+right number of calls within 2 s. `--no-build` skips the image build, `--down` stops the stack afterwards.
 
 ## Run without Docker
 
