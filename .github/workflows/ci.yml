@@ -15,6 +15,23 @@ concurrency:
 jobs:
   rust:
     runs-on: ubuntu-latest
+    services:
+      # Same image and fake credentials as demo/compose.yaml; demo-api tests create a database per test.
+      postgres:
+        image: postgres:17-trixie
+        env:
+          POSTGRES_USER: demo
+          POSTGRES_PASSWORD: demo
+          POSTGRES_DB: demo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U demo -d demo"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://demo:demo@localhost:5432/demo
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the toolchain from rust-toolchain.toml

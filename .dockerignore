@@ -1,0 +1,17 @@
+# Allow-list: only what the demo images build from.
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!collector/
+!conventions/
+!sdk/
+!demo/
+!ui/package.json
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+**/node_modules
+**/dist
+**/target

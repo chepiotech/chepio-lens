@@ -1,8 +1,13 @@
+// Components
+import Notes from '../Notes/Notes'
+import RequestButtons from '../RequestButtons/RequestButtons'
+
 function App() {
   return (
     <main>
       <h1>chepio-lens demo</h1>
-      <p>Notes, login, slow and failing requests are not built yet.</p>
+      <Notes />
+      <RequestButtons />
     </main>
   )
 }

@@ -1,0 +1,43 @@
+# Demo app for chepio-lens. Every port is published on 127.0.0.1 only; credentials are fake.
+name: chepio-lens-demo
+
+services:
+  db:
+    image: postgres:17-trixie
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: demo
+    ports:
+      # 55432 on the host, so a local Postgres on 5432 does not clash.
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: ..
+      dockerfile: demo/api/Dockerfile
+    environment:
+      DATABASE_URL: postgres://demo:demo@db:5432/demo
+      DEMO_API_ADDR: 0.0.0.0:8080
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: demo/web/Dockerfile
+    init: true
+    environment:
+      DEMO_API_URL: http://api:8080
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - api

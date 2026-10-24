@@ -33,6 +33,7 @@ views, more backend languages and a production mode are planned later.
   [security](docs/architecture/security.md), [quality attributes](docs/architecture/quality-attributes.md)
 - Domain: [glossary](docs/domain/glossary.md), [invariants](docs/domain/invariants.md)
 - Decisions: [docs/decisions](docs/decisions/README.md)
+- Demo app used for development and end-to-end tests: [demo/README.md](demo/README.md)
 
 ## Security note
 
