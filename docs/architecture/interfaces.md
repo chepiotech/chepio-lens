@@ -31,7 +31,7 @@ Stable OpenTelemetry semantic conventions; the legacy names in brackets are mapp
 | `lens.http.request.body` | string | SDK | Request body, redacted, cut to the body limit |
 | `lens.http.response.body` | string | SDK | Response body, redacted, cut to the body limit |
 | `lens.http.request.body.truncated`, `lens.http.response.body.truncated` | bool | SDK | The body was cut |
-| `lens.db.query.parameters` | string[] | Rust SDK | SQL parameter values; only when `CHEPIO_LENS_CAPTURE_SQL_PARAMS=true` |
+| `lens.db.query.parameters` | string[] | Rust SDK | SQL parameter values; only when `CHEPIO_LENS_CAPTURE_SQL_PARAMS=true`. Not produced while ADR-0008 holds: sqlx events carry no parameters |
 | `lens.redaction.count` | int | SDK, collector | Number of values masked on this span |
 | resource `lens.node.kind` | string | SDK (optional) | Overrides node kind: `frontend` or `service` |
 | resource `lens.sdk.version` | string | SDK | chepio-lens SDK version |
@@ -47,7 +47,8 @@ Rust (axum + sqlx), planned shape:
 ```rust
 let lens = chepio_lens_sdk::init("demo-api")?;   // no-op guard when CHEPIO_LENS_ENDPOINT is unset
 let app = Router::new() /* routes */ .layer(lens.http_layer());
-// database spans: mechanism not chosen yet (sqlx tracing events vs explicit wrapper); a future ADR decides
+// database spans: sqlx query events become client spans (ADR-0008); the app passes its connect options once,
+// so the SDK can name the database node
 ```
 
 Browser:

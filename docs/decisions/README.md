@@ -11,3 +11,4 @@ One decision per file. An accepted decision is never edited: a new ADR supersede
 | [ADR-0005](ADR-0005-in-memory-store.md) | The collector keeps data in a bounded in-memory store | Accepted |
 | [ADR-0006](ADR-0006-canvas-2d-map.md) | The map is drawn on Canvas 2D without a graphics library | Accepted |
 | [ADR-0007](ADR-0007-license-and-distribution.md) | Dual MIT OR Apache-2.0 license; SDKs ship as git dependencies until v0.1.0 | Accepted |
+| [ADR-0008](ADR-0008-sqlx-query-events-as-db-spans.md) | The Rust SDK turns sqlx query events into database client spans | Accepted |
