@@ -1,7 +1,7 @@
 # ADR-0006: The map is drawn on Canvas 2D without a graphics library
 
 ## Status
-Proposed
+Accepted
 
 ## Date
 2026-10-23

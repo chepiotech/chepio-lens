@@ -1,7 +1,7 @@
 # ADR-0004: Payloads are captured and redacted in the SDK
 
 ## Status
-Proposed
+Accepted
 
 ## Date
 2026-10-23

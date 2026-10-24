@@ -1,7 +1,7 @@
 # ADR-0003: MVP is a local development tool without authentication
 
 ## Status
-Proposed
+Accepted
 
 ## Date
 2026-10-23

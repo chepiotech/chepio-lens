@@ -1,7 +1,7 @@
 # Components
 
-Status: design. Nothing is implemented yet (2026-10-23). Scope of this view: the MVP — frontend, backend and
-database of one instrumented app. Docker and Kubernetes layers are planned later and are not described here.
+Status: scaffold (2026-10-23): every component below exists as an empty package with a smoke test. Scope of this
+view: the MVP — frontend, backend and database of one instrumented app. Docker and Kubernetes layers are planned later and are not described here.
 
 ## Context
 

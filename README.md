@@ -4,7 +4,8 @@ A live map of a running full-stack app. chepio-lens shows the frontend, the back
 canvas, animates every request along the path it takes, and lets you open any request to see its timeline, headers,
 bodies and SQL.
 
-**Status:** design stage. Nothing is implemented yet; the documents below describe what is being built.
+**Status:** early development. The repository holds the workspace scaffold and the design documents below; no
+feature works yet.
 
 ## How it works
 
@@ -40,4 +41,6 @@ chepio-lens shows request payloads. It is meant for local development only: it h
 
 ## License
 
-Not decided yet.
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your
+option. Unless you explicitly state otherwise, any contribution you submit for inclusion in this project, as defined
+in the Apache-2.0 license, is dual licensed as above, without any additional terms or conditions.

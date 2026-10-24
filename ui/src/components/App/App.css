@@ -1,0 +1,26 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__header {
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.app__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.app__main {
+  flex: 1;
+  display: grid;
+  place-items: center;
+}
+
+.app__empty {
+  color: rgba(230, 232, 235, 0.6);
+}

@@ -1,7 +1,7 @@
 # ADR-0005: The collector keeps data in a bounded in-memory store
 
 ## Status
-Proposed
+Accepted
 
 ## Date
 2026-10-23

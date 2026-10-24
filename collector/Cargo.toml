@@ -1,0 +1,13 @@
+[package]
+name = "chepio-lens-collector"
+description = "Receives OpenTelemetry spans, derives the live map and serves the chepio-lens UI"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "chepio-lens"
+path = "src/main.rs"

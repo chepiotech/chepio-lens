@@ -1,0 +1,13 @@
+{
+  "name": "chepio-lens",
+  "private": true,
+  "license": "MIT OR Apache-2.0",
+  "packageManager": "pnpm@10.30.3",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test"
+  }
+}

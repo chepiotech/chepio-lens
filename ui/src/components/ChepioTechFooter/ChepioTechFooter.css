@@ -1,0 +1,6 @@
+.chepio-footer { background-color: rgba(0,0,0,.3); border-top: 1px solid rgba(255,255,255,.05); }
+.chepio-footer__inner { max-width: 80rem; margin: 0 auto; padding: .75rem 1.5rem; display: flex; justify-content: flex-end; }
+.chepio-footer__link { display: inline-flex; opacity: .25; transition: opacity .3s ease; }
+.chepio-footer__link:hover { opacity: 1; }
+.chepio-footer__logo { height: 1.75rem; width: auto; filter: brightness(0) invert(1); transition: filter .3s ease; }
+.chepio-footer__link:hover .chepio-footer__logo { filter: none; }
