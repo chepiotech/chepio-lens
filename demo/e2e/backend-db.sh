@@ -35,6 +35,15 @@ wait_for() {
 wait_for "$API/api/health"
 wait_for "$LENS/healthz"
 
+# The API's startup migrations are exported up to a batch interval later; wait until no spans arrive for 1.5 s, so
+# they cannot land after the reset.
+previous=-1
+for _ in $(seq 1 20); do
+  received=$(curl -fsS "$LENS/api/stats" | json "data['spans_received']")
+  [ "$received" -eq "$previous" ] && break
+  previous=$received
+  sleep 1.5
+done
 curl -fsS -X POST "$LENS/api/reset" >/dev/null
 
 # Five database queries: three list calls, one insert, one failing query. Login touches no database.
