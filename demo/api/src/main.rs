@@ -25,6 +25,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|_| DEFAULT_ADDR.to_owned())
         .parse()?;
 
+    // Before the pool, so the startup migrations show up too.
+    #[cfg(feature = "lens")]
+    let lens = {
+        let lens = chepio_lens_sdk::init("demo-api")?
+            .with_database(chepio_lens_sdk::Database::postgres_url(&database_url));
+        lens.install_tracing()?;
+        lens
+    };
+
     let options = PgConnectOptions::from_str(&database_url)?
         .options([("statement_timeout", DB_STATEMENT_TIMEOUT)]);
     let pool = PgPoolOptions::new()
@@ -34,18 +43,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
     MIGRATOR.run(&pool).await?;
 
+    let router = app(pool);
+    #[cfg(feature = "lens")]
+    let router = router.layer(lens.http_layer());
+
     let listener = TcpListener::bind(addr).await?;
     println!("demo-api listening on http://{addr}");
-    axum::serve(listener, app(pool))
+    axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+    #[cfg(feature = "lens")]
+    lens.shutdown();
     Ok(())
 }
 
 /// Resolves on Ctrl+C or SIGTERM (`docker compose stop`).
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c().await.ok();
+        // If the handler cannot be registered, keep running rather than shut down at once.
+        if signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
     };
     #[cfg(unix)]
     let terminate = async {

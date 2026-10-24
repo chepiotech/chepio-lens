@@ -1,6 +1,7 @@
 # Interfaces
 
-Status (2026-10-24): the collector side of sections 1, 3 and 4 is implemented; the SDK sections are still the plan.
+Status (2026-10-24): the collector side of sections 1, 3 and 4 and the Rust SDK without payload capture are
+implemented; the web SDK is still the plan.
 Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
 (`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
@@ -46,14 +47,23 @@ The collector ignores unknown `lens.*` attributes, so an older collector accepts
 
 The SDK APIs are public and versioned with semver: breaking changes need a major version.
 
-Rust (axum + sqlx), planned shape:
+Rust (axum + sqlx), `sdk/rust`:
 
 ```rust
-let lens = chepio_lens_sdk::init("demo-api")?;   // no-op guard when CHEPIO_LENS_ENDPOINT is unset
+let lens = chepio_lens_sdk::init("demo-api")?          // no-op unless CHEPIO_LENS_ENDPOINT is set
+    .with_database(chepio_lens_sdk::Database::postgres_url(&database_url)); // host, port, name; no credentials
+lens.install_tracing()?;                               // or add lens.tracing_layer() to the app's own subscriber
 let app = Router::new() /* routes */ .layer(lens.http_layer());
-// database spans: sqlx query events become client spans (ADR-0008); the app passes its connect options once,
-// so the SDK can name the database node
+// after serving: lens.shutdown();                      // flushes, waits at most 2 s
 ```
+
+- Server spans: one per request, joined to the caller via `traceparent`; name `<method> <route>`; attributes
+  `http.request.method`, `url.path`, `url.query`, `http.route`, `http.response.status_code`; status error for 5xx.
+- Database spans: from sqlx query events (ADR-0008): `db.system.name`, `server.address`, `server.port`,
+  `db.namespace`, `db.query.text`, `db.operation.name`, `db.response.returned_rows`. Without `with_database` the
+  system is `other_sql`. Database spans need `sqlx::query` events at `DEBUG` to reach the SDK's tracing layer; the
+  first request prints one warning to stderr when they do not.
+- Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*`.
 
 Browser:
 

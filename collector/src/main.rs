@@ -79,7 +79,10 @@ async fn main() -> ExitCode {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c().await.ok();
+        // If the handler cannot be registered, keep running rather than shut down at once.
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
+        }
     };
     #[cfg(unix)]
     let terminate = async {

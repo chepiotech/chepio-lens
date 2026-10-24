@@ -1,7 +1,7 @@
 # Components
 
-Status (2026-10-24): `conventions` and the collector core (ingest, graph, store, UI API, SSE) are implemented; the
-other components are empty packages with a smoke test. Scope of this view: the MVP — frontend, backend and database
+Status (2026-10-24): `conventions`, the collector core (ingest, graph, store, UI API, SSE), the Rust SDK (without
+payload capture) and the demo app are implemented; the UI and the web SDK are empty packages with a smoke test. Scope of this view: the MVP — frontend, backend and database
 of one instrumented app. Docker and Kubernetes layers are planned later and are not described here.
 
 ## Context

@@ -1,7 +1,7 @@
 # Demo app
 
 The full-stack app that chepio-lens instruments and its end-to-end tests drive: a React page, a Rust API (axum,
-sqlx) and Postgres. It has no telemetry of its own yet.
+sqlx) and Postgres. Telemetry is off unless the API is built with the cargo feature `lens` (below).
 
 ## Run
 
@@ -40,3 +40,15 @@ pnpm --filter demo-web dev
 ```
 
 `DEMO_API_ADDR` sets the API listener (default `127.0.0.1:8080`); `DEMO_API_URL` sets the web proxy target.
+
+## Report to chepio-lens
+
+The API reports to a collector when built with the cargo feature `lens` and `CHEPIO_LENS_ENDPOINT` is set:
+
+```sh
+cargo run -p chepio-lens-collector &
+CHEPIO_LENS_ENDPOINT=http://localhost:4318 DATABASE_URL=postgres://demo:demo@127.0.0.1:55432/demo \
+  cargo run -p demo-api --features lens
+```
+
+Then `curl http://localhost:4320/api/graph` shows `demo-api` and its database.

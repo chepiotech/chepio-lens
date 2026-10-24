@@ -340,3 +340,47 @@ async fn reset_clears_the_graph_and_health_answers() {
         .unwrap();
     assert_eq!(health.status(), StatusCode::OK);
 }
+
+const RUST_SDK_NOTES: &[u8] = include_bytes!("fixtures/rust_sdk_notes.pb");
+const RUST_SDK_FAIL: &[u8] = include_bytes!("fixtures/rust_sdk_fail.pb");
+
+/// Batches recorded from the real Rust SDK exporter (`fixtures/README.md`).
+#[tokio::test]
+async fn batches_from_the_rust_sdk_show_the_api_and_its_database() {
+    let app = app(Limits::default());
+    let response = app
+        .ui
+        .clone()
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let mut events = response.into_body();
+
+    for batch in [RUST_SDK_NOTES, RUST_SDK_FAIL] {
+        let (status, _) = post(
+            &app.otlp,
+            "/v1/traces",
+            "application/x-protobuf",
+            batch.to_vec(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    let graph = get_json(&app.ui, "/api/graph").await;
+    let db = edge(&graph, "svc:demo-api->db:postgresql:127.0.0.1:55432/demo");
+    assert_eq!(db["count"], 2);
+    assert_eq!(
+        db["errors"], 0,
+        "sqlx query events carry no error (ADR-0008)"
+    );
+    let notes = next_event(&mut events, "request").await;
+    assert!(notes.contains("\"route\":\"/api/notes\""), "{notes}");
+    assert!(notes.contains("\"status_code\":200"), "{notes}");
+    let fail = next_event(&mut events, "request").await;
+    assert!(fail.contains("\"route\":\"/api/fail\""), "{fail}");
+    assert!(
+        fail.contains("\"error\":true"),
+        "the 500 marks the request: {fail}"
+    );
+}

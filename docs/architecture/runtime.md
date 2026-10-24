@@ -48,7 +48,7 @@ Every buffer is bounded; on overflow the oldest entry is dropped and ingest is n
 
 | Operation | Timeout | Retry |
 |---|---|---|
-| SDK export (HTTP POST) | 2 s | chepio-lens adds no retries; any built-in exporter retry on `429`/`503` must fit in the timeout (verify per SDK), then the batch is dropped |
+| SDK export (HTTP POST) | 2 s | chepio-lens adds no retries; any built-in exporter retry on `429`/`503` must fit in the timeout (verify per SDK), then the batch is dropped. Rust SDK: opentelemetry-otlp 0.33 without its experimental retry feature, so no retries |
 | Collector reading a request body | 10 s, then `408` | — |
 | Graceful shutdown | 5 s to finish in-flight ingest and close SSE streams | — |
 | UI SSE reconnect | browser `EventSource` default, then refetch `/api/graph` | Automatic |
