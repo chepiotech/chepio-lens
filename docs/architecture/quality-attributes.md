@@ -102,7 +102,7 @@ Measurement run (2026-10-25, same machine, Chromium 156 headless from Playwright
 | SDK | Spans and payload attributes produced for a test axum app and a mocked `fetch`; app unaffected when the endpoint is unreachable | `sdk/rust/tests/`, `sdk/web` |
 | UI | Layout, event application, selection; renderer logic separated from canvas calls so it is testable | `ui/` (Vitest) |
 | End-to-end | Demo app + collector in compose: a script drives the API and checks `/api/graph`; Playwright clicks in the demo and checks the map's text summary and that the request is animated once | `demo/e2e/` |
-| Security | Demo login secrets never reach the collector unmasked; an HTML/JS payload in a body renders as text | e2e + collector tests |
+| Security | Demo login secrets never reach the collector unmasked; an HTML/JS payload in a body renders as text | `demo/e2e/tests/payload-security.spec.ts` (real demo login and note), SDK payload tests, collector redaction tests |
 
 ## Performance validation
 

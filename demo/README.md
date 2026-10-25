@@ -42,8 +42,10 @@ right number of calls within 2 s. `--no-build` skips the image build, `--down` s
 browser tabs with the demo first: when a rebuild restarts the web container, Vite reloads every open tab, and the
 page load's note queries land in the count (the script says so when it sees browser requests).
 
-With the stack up, the browser test adds a note in the demo and checks that the map shows `demo-web → demo-api →
-postgresql demo` within 2 s and animates the request once (Chromium via Playwright):
+With the stack up, the browser tests add a note in the demo and check that the map shows `demo-web → demo-api →
+postgresql demo` within 2 s and animates the request once with its packet icons. They also log in through the demo
+and check that the password and token appear nowhere the collector serves, and that markup typed into a note is shown
+as text in the inspector (Chromium via Playwright):
 
 ```sh
 pnpm --filter demo-e2e exec playwright install chromium   # once
