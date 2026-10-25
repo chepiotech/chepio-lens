@@ -1,0 +1,81 @@
+name: Image
+
+# Builds the collector image natively on amd64 and arm64 runners and smoke-tests each through collector/compose.yaml.
+# Only a v* tag pushes: one tag per architecture, then the multi-architecture tag (ADR-0011).
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - collector/Dockerfile
+      - collector/compose.yaml
+      - collector/image-smoke.sh
+      - .dockerignore
+      - .github/workflows/image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/chepiotech/chepio-lens
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build
+        run: |
+          version=dev
+          case "$GITHUB_REF" in refs/tags/v*) version="${GITHUB_REF_NAME#v}" ;; esac
+          docker build -f collector/Dockerfile -t "chepio-lens:$ARCH" \
+            --label "org.opencontainers.image.version=$version" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+      - name: Smoke test (health, loopback ports, OTLP ingest, embedded UI)
+        run: collector/image-smoke.sh "chepio-lens:$ARCH"
+      - name: Push the architecture tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag "chepio-lens:$ARCH" "$IMAGE:${GITHUB_REF_NAME#v}-$ARCH"
+          docker push "$IMAGE:${GITHUB_REF_NAME#v}-$ARCH"
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - name: Multi-architecture tag, and latest unless a pre-release
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          version="${GITHUB_REF_NAME#v}"
+          tags=(--tag "$IMAGE:$version")
+          case "$version" in *-*) ;; *) tags+=(--tag "$IMAGE:latest") ;; esac
+          docker buildx imagetools create "${tags[@]}" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/chepiotech/chepio-lens" \
+            --annotation "index:org.opencontainers.image.description=Live map of a running app for local development" \
+            --annotation "index:org.opencontainers.image.licenses=MIT OR Apache-2.0" \
+            "$IMAGE:$version-amd64" "$IMAGE:$version-arm64"
