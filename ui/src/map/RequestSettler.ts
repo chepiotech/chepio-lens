@@ -23,7 +23,11 @@ export class RequestSettler {
   private readonly pending = new Map<string, Pending>()
   private readonly shown = new Set<string>()
 
-  constructor(private readonly onSettled: (request: RequestView) => void) {}
+  private readonly onSettled: (request: RequestView) => void
+
+  constructor(onSettled: (request: RequestView) => void) {
+    this.onSettled = onSettled
+  }
 
   push(request: RequestView) {
     const id = request.trace_id

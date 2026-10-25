@@ -57,6 +57,7 @@ than `http://localhost:5173` must be listed in `CHEPIO_LENS_CORS_ORIGINS`, or it
 
 ## Documentation
 
+- Connect your app: [docs/workflows/connect-a-project.md](docs/workflows/connect-a-project.md)
 - Architecture: [components](docs/architecture/components.md), [data](docs/architecture/data.md),
   [interfaces](docs/architecture/interfaces.md), [runtime](docs/architecture/runtime.md),
   [security](docs/architecture/security.md), [quality attributes](docs/architecture/quality-attributes.md)

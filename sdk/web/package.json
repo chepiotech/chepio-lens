@@ -7,6 +7,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": [
+    "src",
+    "!src/**/*.test.ts",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"

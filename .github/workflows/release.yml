@@ -1,0 +1,39 @@
+name: Release
+
+# On a v* tag: the GitHub release with the web SDK tarball attached (ADR-0014). The collector image is pushed by
+# image.yml on the same tag (ADR-0011). Every tag is an owner decision.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  web-sdk:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter chepio-lens-web
+      - name: The tarball installs with npm and type-checks
+        run: sdk/web/pack-check.sh
+      - name: Pack with the tag's version
+        run: sdk/web/pack.sh dist "${GITHUB_REF_NAME#v}"
+      - name: Release with the tarball
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prerelease=()
+          case "$GITHUB_REF_NAME" in *-*) prerelease=(--prerelease) ;; esac
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/chepio-lens-web-*.tgz --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/chepio-lens-web-*.tgz --verify-tag --generate-notes "${prerelease[@]}"
+          fi
