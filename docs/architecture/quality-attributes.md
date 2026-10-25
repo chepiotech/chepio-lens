@@ -30,9 +30,9 @@ restarts, production use, authentication.
 | Collector ingest throughput | ≥ 2,000 spans/s sustained on a laptop, using < 1 CPU core | 2,000 spans/s at 0.01 cores; maximum ≈ 374,000 spans/s at 1.6 cores, batch p99 6 ms (B) |
 | Collector memory at default bounds | RSS ≤ 300 MiB | 60 MiB with the store full by count (10,000 requests of 4 spans, no bodies); 3.4 MiB idle (B). Full by bytes (with bodies) not measured yet |
 | Collector startup | ≤ 1 s | 0.56 s to `/healthz` answering (B) |
-| Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | — |
+| Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | Bodies on: +0.13 ms at p95, +0.05 ms at p50 over the whole mix; requests without a database query +0.13–0.17 ms at p95, +0.03 ms at p50. Exporting without bodies +0.28 ms at p95; SDK without an endpoint +0.07 ms (E) |
 | Map rendering | 60 fps with 50 nodes, 100 edges, 200 animated requests | 60 fps: 600 frames in 10 s, none late; draw p50/p95/max 0.6 / 0.8 / 1.0 ms at device pixel ratio 1, 0.6 / 0.7 / 0.8 ms at 2 (JavaScript side; rasterization is not included) (D) |
-| Collector unavailable | Zero errors and no measurable latency change in the app | — |
+| Collector unavailable | Zero errors and no measurable latency change in the app | Rust SDK, nothing listening at the endpoint: 0 errors in 20,000 requests; p50 +0.06 ms, p95 −0.13 ms, within the noise (E) |
 
 Measurement runs (2026-10-24, Apple M1 Pro, 10 cores, 16 GiB, macOS 26.6, release builds, everything on one
 machine over loopback):
@@ -60,6 +60,22 @@ timing change was needed. The fetch instrumentation's observer wait delays expor
 captured when the response body completed. This comparison diagnoses display semantics; it is not an SDK overhead
 measurement.
 
+Measurement run (2026-10-25, same machine, macOS 26.6.2, Docker Desktop 29.5.3, release builds; the machine was busy
+with other builds, load average 10 at the start and 47 at the end):
+
+- (E) `cargo run --release -p demo-api --features lens --example sdk_overhead -- --rounds 20`
+  (`demo/api/examples/sdk_overhead.rs`, procedure in `demo/README.md`): the demo API in five processes (without the
+  SDK; SDK without an endpoint; exporting without bodies; exporting with bodies at the 16 KiB limit; endpoint on a
+  closed port), Postgres 17 in Docker, a release collector. 100 requests/s per mode over 4 keep-alive connections,
+  an equal mix of `GET /api/health`, `POST /api/login`, `GET` and `PUT /api/notes/{id}` (1000-character note) and
+  `GET /api/notes` (about 100 KB, cut to 16 KiB); 20 rounds of 10 s per mode in rotating order, 20,000 requests per
+  mode. Each value is the median over the rounds of that round's percentile, and differences are taken within a
+  round: single slots stalled the whole machine (one slot without the SDK reached p95 1.5 s). The p95 of requests
+  with a database query varies by several milliseconds between slots (Postgres in the Docker Desktop VM), so
+  per-request differences there are not resolved below about 1.5 ms: exporting without bodies showed +1.47 ms on
+  `GET /api/notes` while exporting with bodies, which does more work, showed −0.05 ms. p99 differences (−0.5 to
+  +2 ms) are within the same noise. The collector rejected and dropped no spans.
+
 ## Test strategy
 
 | Level | What | Where |
@@ -75,6 +91,7 @@ measurement.
 ## Performance validation
 
 - Ingest: a load generator replays recorded OTLP batches; measure spans/s, p99 handler time, RSS.
-- SDK overhead: compare demo API latency with SDK off, on without bodies, on with bodies, under the same load.
+- SDK overhead: compare demo API latency with SDK off, on without bodies, on with bodies, under the same load
+  (`demo/api/examples/sdk_overhead.rs`).
 - UI: browser performance profile with a synthetic event stream at the target graph size.
 - Each measurement is recorded in the table above with date, machine and command.
