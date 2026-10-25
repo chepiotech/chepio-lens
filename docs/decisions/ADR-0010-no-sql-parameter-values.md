@@ -29,8 +29,8 @@ option could not be implemented. The request inspector needs a decision before i
 
 ## Consequences
 - Easier: one fewer option and attribute; no unmaskable data in spans.
-- Harder: debugging a query by its values needs the app's own logs (after ROADMAP 4.9, they appear in the logs panel
-  next to the query).
+- Harder: debugging a query by its values needs the app's own logs (planned app-log support will show them in the
+  logs panel next to the query).
 - Queries that inline values into the SQL text still show them (known gap in `security.md`).
 
 ## Validation / fitness criteria

@@ -7,7 +7,7 @@ import type { EdgeView } from '../api/generated/EdgeView'
 import type { NodeView } from '../api/generated/NodeView'
 import type { RequestView } from '../api/generated/RequestView'
 // Utils
-import { emptyGraph, graphReducer } from '../map/graphState'
+import { emptyGraph, graphReducer, mergeGraphSnapshot, type GraphAction, type GraphState } from '../map/graphState'
 
 export type FeedStatus = 'connecting' | 'live' | 'offline'
 
@@ -20,14 +20,31 @@ export function useLensFeed(onRequest: (request: RequestView) => void) {
   const [status, setStatus] = useState<FeedStatus>('connecting')
   const onRequestRef = useRef(onRequest)
   onRequestRef.current = onRequest
+  const reloadRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
     const source = new EventSource(EVENTS_URL)
-    const load = () =>
-      fetchGraph().then(
-        (snapshot) => dispatch({ type: 'snapshot', graph: snapshot }),
-        () => setStatus('offline'),
-      )
+    let generation = 0
+    let pending: { updates: GraphState } | null = null
+    const load = async () => {
+      const current = ++generation
+      const buffer = { updates: emptyGraph }
+      pending = buffer
+      try {
+        const snapshot = await fetchGraph()
+        if (current !== generation) return
+        dispatch({ type: 'snapshot', graph: mergeGraphSnapshot(snapshot, buffer.updates) })
+      } catch {
+        if (current === generation) setStatus('offline')
+      } finally {
+        if (current === generation) pending = null
+      }
+    }
+    reloadRef.current = load
+    const apply = (action: GraphAction) => {
+      if (pending) pending.updates = graphReducer(pending.updates, action)
+      dispatch(action)
+    }
     source.onopen = () => {
       setStatus('live')
       void load()
@@ -35,19 +52,26 @@ export function useLensFeed(onRequest: (request: RequestView) => void) {
     // EventSource reconnects by itself; onopen then loads a fresh snapshot.
     source.onerror = () => setStatus(source.readyState === EventSource.CLOSED ? 'offline' : 'connecting')
     source.addEventListener(EVENT.node, (event) =>
-      dispatch({ type: 'node', node: JSON.parse(event.data) as NodeView }),
+      apply({ type: 'node', node: JSON.parse(event.data) as NodeView }),
     )
     source.addEventListener(EVENT.edge, (event) =>
-      dispatch({ type: 'edge', edge: JSON.parse(event.data) as EdgeView }),
+      apply({ type: 'edge', edge: JSON.parse(event.data) as EdgeView }),
     )
     source.addEventListener(EVENT.request, (event) => onRequestRef.current(JSON.parse(event.data) as RequestView))
     source.addEventListener(EVENT.resync, () => void load())
-    return () => source.close()
+    return () => {
+      generation += 1
+      pending = null
+      reloadRef.current = null
+      source.close()
+    }
   }, [])
 
   const reset = useCallback(async () => {
     await resetCollector()
     dispatch({ type: 'clear' })
+    // Invalidate any earlier snapshot and recover calls that arrived immediately after the reset.
+    await reloadRef.current?.()
   }, [])
 
   return { graph, status, reset }

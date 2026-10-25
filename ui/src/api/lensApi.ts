@@ -9,6 +9,7 @@ export const EVENT = {
   node: 'node',
   edge: 'edge',
   request: 'request',
+  log: 'log',
   resync: 'resync',
 } as const satisfies Record<LensEventName, LensEventName>
 

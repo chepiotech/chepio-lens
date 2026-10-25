@@ -8,6 +8,7 @@ use chepio_lens_conventions::redaction::Redactor;
 use crate::domain::event::LensEvent;
 use crate::domain::graph::Changes;
 use crate::domain::linker::Link;
+use crate::domain::log::LogEntry;
 use crate::domain::request::HopRecord;
 use crate::domain::span::{Span, TraceId};
 use crate::domain::time::Now;
@@ -98,7 +99,8 @@ impl Ingest {
             for link in &links {
                 record(&mut state, link, now, &mut changes, &mut touched);
             }
-            events(&state, &changes, &touched, now)
+            // Expiry adds hops to stored spans; no new log lines.
+            events(&state, &changes, &touched, Vec::new(), now)
         };
         self.publish(&events);
     }
@@ -116,6 +118,7 @@ impl Ingest {
         let mut state = self.shared.lock();
         let mut changes = Changes::default();
         let mut touched = BTreeSet::new();
+        let mut logs = Vec::new();
         let mut dropped = 0;
         for span in spans {
             state
@@ -124,8 +127,9 @@ impl Ingest {
             let links = state.linker.on_span(&span, now.mono_ms);
             let trace_id = span.trace_id;
             match state.store.insert(span) {
-                Inserted::Stored => {
+                Inserted::Stored(entry) => {
                     touched.insert(trace_id);
+                    logs.push(entry);
                 }
                 Inserted::Dropped => dropped += 1,
             }
@@ -136,7 +140,7 @@ impl Ingest {
         for link in &state.linker.expire(now.mono_ms) {
             record(&mut state, link, now, &mut changes, &mut touched);
         }
-        (events(&state, &changes, &touched, now), dropped)
+        (events(&state, &changes, &touched, logs, now), dropped)
     }
 
     fn publish(&self, events: &[LensEvent]) {
@@ -167,11 +171,13 @@ fn record(
     }
 }
 
-/// New nodes first, then changed edges, then the touched requests, so a client always knows the nodes an edge uses.
+/// New nodes first, then changed edges, then the touched requests and the new log lines, so a client always knows the
+/// nodes an edge uses.
 fn events(
     state: &State,
     changes: &Changes,
     touched: &BTreeSet<TraceId>,
+    logs: Vec<LogEntry>,
     now: Now,
 ) -> Vec<LensEvent> {
     let nodes = changes
@@ -187,5 +193,9 @@ fn events(
     let requests = touched
         .iter()
         .filter_map(|trace_id| state.store.summary(trace_id).map(LensEvent::Request));
-    nodes.chain(edges).chain(requests).collect()
+    nodes
+        .chain(edges)
+        .chain(requests)
+        .chain(logs.into_iter().map(LensEvent::Log))
+        .collect()
 }

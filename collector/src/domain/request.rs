@@ -28,6 +28,14 @@ pub struct Hop {
     pub duration_ns: u64,
 }
 
+/// A request with all its spans, for the inspector.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RequestDetail {
+    pub summary: RequestSummary,
+    /// Ordered by start time as received (I12: offsets across processes are not corrected).
+    pub spans: Vec<Span>,
+}
+
 /// Summary of one trace, rebuilt as its spans arrive.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RequestSummary {

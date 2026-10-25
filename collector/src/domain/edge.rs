@@ -1,3 +1,6 @@
+// Domain
+use super::span::{SpanId, TraceId};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Protocol {
     Http,
@@ -109,6 +112,19 @@ impl RateWindow {
     }
 }
 
+/// Routes counted per edge; calls to further routes are counted under [`OTHER_ROUTES`] (I9).
+pub const MAX_ROUTES_PER_EDGE: usize = 16;
+pub const OTHER_ROUTES: &str = "(other routes)";
+
+/// Calls of one route of the callee: count, errors and timing without a histogram, to keep edges small.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RouteStats {
+    pub count: u64,
+    pub errors: u64,
+    pub total_ns: u64,
+    pub max_ns: u64,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Edge {
     pub key: EdgeKey,
@@ -116,8 +132,34 @@ pub struct Edge {
     pub errors: u64,
     pub latency: LatencyHistogram,
     pub rate: RateWindow,
+    pub routes: std::collections::BTreeMap<String, RouteStats>,
+    latest_call: Option<LatestCall>,
     pub first_seen_ns: u64,
     pub last_seen_ns: u64,
+}
+
+/// Caller-clock completion time, with stable tie breakers for batches arriving in any order (I7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CallOrder {
+    pub end_ns: u64,
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct LatestCall {
+    order: CallOrder,
+    duration_ns: u64,
+    error: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RouteSnapshot {
+    pub route: String,
+    pub count: u64,
+    pub errors: u64,
+    pub mean_ns: u64,
+    pub max_ns: u64,
 }
 
 /// An edge's numbers at one moment, as the UI API reports them.
@@ -126,9 +168,13 @@ pub struct EdgeSnapshot {
     pub key: EdgeKey,
     pub count: u64,
     pub errors: u64,
+    pub last_error: bool,
+    pub last_duration_ns: u64,
     pub p50_ns: u64,
     pub p95_ns: u64,
     pub rate_per_second: f64,
+    /// Most called first.
+    pub routes: Vec<RouteSnapshot>,
     pub last_seen_ns: u64,
 }
 
@@ -140,17 +186,48 @@ impl Edge {
             errors: 0,
             latency: LatencyHistogram::default(),
             rate: RateWindow::default(),
+            routes: std::collections::BTreeMap::new(),
+            latest_call: None,
             first_seen_ns: now_unix_ns,
             last_seen_ns: now_unix_ns,
         }
     }
 
-    pub fn record(&mut self, duration_ns: u64, error: bool, now_mono_ms: u64, now_unix_ns: u64) {
+    pub fn record(
+        &mut self,
+        route: &str,
+        duration_ns: u64,
+        error: bool,
+        now_mono_ms: u64,
+        now_unix_ns: u64,
+        order: CallOrder,
+    ) {
         self.count += 1;
         self.errors += u64::from(error);
         self.latency.record(duration_ns);
         self.rate.record(now_mono_ms);
         self.last_seen_ns = now_unix_ns;
+        if self
+            .latest_call
+            .as_ref()
+            .is_none_or(|last| order > last.order)
+        {
+            self.latest_call = Some(LatestCall {
+                order,
+                duration_ns,
+                error,
+            });
+        }
+        let route = if self.routes.contains_key(route) || self.routes.len() < MAX_ROUTES_PER_EDGE {
+            route
+        } else {
+            OTHER_ROUTES
+        };
+        let stats = self.routes.entry(route.to_owned()).or_default();
+        stats.count += 1;
+        stats.errors += u64::from(error);
+        stats.total_ns = stats.total_ns.saturating_add(duration_ns);
+        stats.max_ns = stats.max_ns.max(duration_ns);
     }
 
     pub fn snapshot(&self, now_mono_ms: u64) -> EdgeSnapshot {
@@ -158,9 +235,26 @@ impl Edge {
             key: self.key.clone(),
             count: self.count,
             errors: self.errors,
+            last_error: self.latest_call.as_ref().is_some_and(|call| call.error),
+            last_duration_ns: self.latest_call.as_ref().map_or(0, |call| call.duration_ns),
             p50_ns: self.latency.quantile_ns(0.5),
             p95_ns: self.latency.quantile_ns(0.95),
             rate_per_second: self.rate.per_second(now_mono_ms),
+            routes: {
+                let mut routes: Vec<RouteSnapshot> = self
+                    .routes
+                    .iter()
+                    .map(|(route, stats)| RouteSnapshot {
+                        route: route.clone(),
+                        count: stats.count,
+                        errors: stats.errors,
+                        mean_ns: stats.total_ns / stats.count.max(1),
+                        max_ns: stats.max_ns,
+                    })
+                    .collect();
+                routes.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.route.cmp(&b.route)));
+                routes
+            },
             last_seen_ns: self.last_seen_ns,
         }
     }
@@ -170,6 +264,55 @@ impl Edge {
 mod tests {
     // Core
     use super::*;
+
+    fn order(end_ns: u64) -> CallOrder {
+        CallOrder {
+            end_ns,
+            trace_id: TraceId([1; 16]),
+            span_id: SpanId([1; 8]),
+        }
+    }
+
+    #[test]
+    fn routes_are_counted_per_edge_up_to_the_bound() {
+        let key = EdgeKey {
+            from: "svc:web".into(),
+            to: "svc:api".into(),
+            protocol: Protocol::Http,
+        };
+        let mut edge = Edge::new(key, 0);
+        edge.record("GET /api/notes", 2_000_000, false, 0, 0, order(2_000_000));
+        edge.record("GET /api/notes", 4_000_000, true, 0, 0, order(4_000_000));
+        for i in 0..MAX_ROUTES_PER_EDGE + 2 {
+            edge.record(
+                &format!("GET /r{i}"),
+                1_000,
+                false,
+                0,
+                0,
+                order(5_000_000 + i as u64),
+            );
+        }
+
+        let routes = edge.snapshot(0).routes;
+
+        assert_eq!(routes.len(), MAX_ROUTES_PER_EDGE + 1);
+        // Most called first: the three calls past the bound outnumber the two to /api/notes.
+        assert_eq!(
+            (routes[0].route.as_str(), routes[0].count),
+            (OTHER_ROUTES, 3)
+        );
+        assert_eq!(
+            routes[1],
+            RouteSnapshot {
+                route: "GET /api/notes".into(),
+                count: 2,
+                errors: 1,
+                mean_ns: 3_000_000,
+                max_ns: 4_000_000,
+            }
+        );
+    }
 
     #[test]
     fn histogram_quantiles_are_close_upper_bounds() {
@@ -212,8 +355,8 @@ mod tests {
             protocol: Protocol::Http,
         };
         let mut edge = Edge::new(key, 10);
-        edge.record(2_000_000, false, 1_000, 20);
-        edge.record(4_000_000, true, 1_500, 30);
+        edge.record("GET /a", 2_000_000, false, 1_000, 20, order(2_000_000));
+        edge.record("GET /a", 4_000_000, true, 1_500, 30, order(4_000_000));
         let snapshot = edge.snapshot(1_500);
         assert_eq!(
             (snapshot.count, snapshot.errors, snapshot.last_seen_ns),
@@ -221,5 +364,10 @@ mod tests {
         );
         assert_eq!(snapshot.key.id(), "svc:a->svc:b");
         assert!(snapshot.p95_ns >= 4_000_000);
+        assert!(
+            snapshot.last_error,
+            "a newer failed call changes the current result"
+        );
+        assert_eq!(snapshot.last_duration_ns, 4_000_000);
     }
 }

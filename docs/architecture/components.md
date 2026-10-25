@@ -76,4 +76,6 @@ Layers follow the global import groups; arrows show allowed imports.
   curves, hit-testing), `graphState` (snapshot + events), `MapRenderer` (canvas drawing and input); only the
   renderer touches the canvas, so the rest is unit-tested.
 - State: the graph snapshot from `GET /api/graph`, then incremental SSE events; a `resync` event triggers a fresh
-  snapshot.
+  snapshot. Events received during a snapshot request are buffered by node/edge id and merged when it completes,
+  keeping the higher edge call count so a slow snapshot cannot restore an old error. A newer load, reset or
+  unmount invalidates the previous load.

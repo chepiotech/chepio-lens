@@ -23,9 +23,16 @@ pub const MAX_STORED_REQUESTS: usize = 10_000;
 pub const MAX_STORED_BYTES: usize = 256 * 1024 * 1024;
 pub const MAX_SPANS_PER_REQUEST: usize = 1_000;
 pub const MAX_ATTRIBUTE_VALUE_BYTES: usize = 256 * 1024;
+/// Events kept per span; later ones are dropped and counted in `truncated_attributes` as `events`.
+pub const MAX_EVENTS_PER_SPAN: usize = 32;
 pub const MAX_PENDING_CLIENTS: usize = 10_000;
 /// Server spans waiting for their client parent; same bound as the pending clients.
 pub const MAX_ORPHAN_SERVERS: usize = 10_000;
+/// Lines in the logs panel's log (one per stored span); the oldest by time is dropped first.
+pub const MAX_LOG_ENTRIES: usize = 50_000;
+/// `GET /api/logs` page size: default and maximum.
+pub const LOG_PAGE_DEFAULT: usize = 100;
+pub const LOG_PAGE_MAX: usize = 500;
 pub const MAX_NODES: usize = 1_000;
 pub const MAX_EDGES: usize = 5_000;
 pub const MAX_SSE_CLIENTS: usize = 16;

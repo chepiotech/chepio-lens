@@ -48,6 +48,10 @@ pnpm --filter demo-e2e exec playwright install chromium   # once
 pnpm --filter demo-e2e e2e
 ```
 
+The suite also ingests synthetic failures and successes and checks the canvas arrow color and last-call duration,
+including a delayed older failure. This regression can run alone with `--grep 'arrow recovers'`; a custom Playwright
+config may set `use.baseURL` for the UI and `metadata.otlpUrl` for ingest (defaults are the compose ports above).
+
 `pnpm --filter demo-e2e perf` measures the map's frame time on a synthetic graph of the target size; it starts the UI
 dev server itself and needs no stack.
 
