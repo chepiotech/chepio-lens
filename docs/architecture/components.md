@@ -1,7 +1,7 @@
 # Components
 
 Status (2026-10-25): `conventions`, the collector core (ingest, graph, store, UI API, SSE, embedded UI), both SDKs
-with header and body capture, the UI map and the demo app are implemented.
+with header and body capture, the UI map, filtered logs, request inspector and demo app are implemented.
 Scope of this view: the MVP — frontend, backend and database of one instrumented app. Docker and Kubernetes layers
 are planned later and are not described here.
 
@@ -70,7 +70,7 @@ Layers follow the global import groups; arrows show allowed imports.
 
 ## UI internals
 
-- React renders the panels (request list, inspector, toolbar) and the page footer with `<ChepioTechFooter />`.
+- React renders the logs panel, request inspector, toolbar and page footer with `<ChepioTechFooter />`.
 - The map is one `<canvas>` driven by a renderer module outside React's render cycle (ADR-0006). React passes state
   in and receives selection events out. `ui/src/map/`: `layoutGraph` (deterministic columns), `geometry` (camera,
   curves, hit-testing), `graphState` (snapshot + events), `MapRenderer` (canvas drawing and input); only the
@@ -79,3 +79,13 @@ Layers follow the global import groups; arrows show allowed imports.
   snapshot. Events received during a snapshot request are buffered by node/edge id and merged when it completes,
   keeping the higher edge call count so a slow snapshot cannot restore an old error. A newer load, reset or
   unmount invalidates the previous load.
+- The activity panel docks right or bottom; only its dock and dimensions are stored in `localStorage`. Log and
+  request contents stay in memory. Edge selection opens its filtered log; a line selects its trace and span in the
+  inspector. Per-route edge statistics remain available above the log.
+- `useLogs` reads filtered pages from `GET /api/logs`; SSE log/request events coalesce refreshes so edge linking and
+  filter semantics remain on the collector. Filters cancel previous loads. The list is bounded and pauses live
+  updates while the reader visits earlier lines (`runtime.md`).
+- The inspector loads `GET /api/requests/{trace_id}` and refreshes when the selected request changes in SSE. It
+  renders span offsets as received, flags children starting before their parents, and shows headers, bodies, SQL,
+  status and events as React text. Valid JSON bodies are formatted; truncation, redaction and invalid JSON are
+  explicit. Unknown/evicted requests and failed loads have recoverable states.

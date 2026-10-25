@@ -4,8 +4,9 @@ A live map of a running full-stack app. chepio-lens shows the frontend, the back
 canvas, animates every request along the path it takes, and lets you open any request to see its timeline, headers,
 bodies and SQL.
 
-**Status:** early development. The repository holds the workspace scaffold and the design documents below; no
-feature works yet.
+**Status:** early development with a working local demo: the browser → API → database map, live filtered logs,
+request waterfall, headers, bodies, SQL and errors. App log records and user-action capture are still planned.
+See [the demo guide](demo/README.md) to run it and use the logs panel and inspector.
 
 ## How it works
 
@@ -19,7 +20,8 @@ Your app                                        chepio-lens
 ```
 
 - The SDKs are thin wrappers around [OpenTelemetry](https://opentelemetry.io/). They record HTTP calls and database
-  queries, add request and response payloads, and mask secrets before anything leaves your app.
+  queries, add request and response payloads, and redact sensitive headers and configured JSON/form fields before
+  export (limits and known gaps are described in [security](docs/architecture/security.md)).
 - The collector receives the spans, works out which component talks to which, and serves the map.
 - Any service that already exports OpenTelemetry traces over OTLP/HTTP appears on the map too, without payloads.
 

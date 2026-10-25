@@ -10,14 +10,15 @@ type Props = {
   graph: GraphState
   selection: NonNullable<Selection>
   onClose: () => void
+  inline?: boolean
 }
 
 /** Facts about the selected node or edge, as plain text (I11). */
-function DetailsPanel({ graph, selection, onClose }: Props) {
+function DetailsPanel({ graph, selection, onClose, inline = false }: Props) {
   const rows = selection.kind === 'node' ? nodeRows(graph, selection.id) : edgeRows(graph, selection.id)
   if (!rows) return null
   return (
-    <aside className="details-panel" aria-label="Selection details">
+    <aside className={`details-panel${inline ? ' details-panel--inline' : ''}`} aria-label="Selection details">
       <header className="details-panel__header">
         <h2 className="details-panel__title">{rows.title}</h2>
         <button type="button" className="details-panel__close" onClick={onClose} aria-label="Close details">
@@ -32,6 +33,13 @@ function DetailsPanel({ graph, selection, onClose }: Props) {
           </div>
         ))}
       </dl>
+      {selection.kind === 'edge' && Boolean(graph.edges[selection.id]?.routes.length) && <section aria-label="Calls by route" className="details-panel__routes">
+        <h3>Calls by route</h3>
+        <ul>{graph.edges[selection.id]!.routes.map((route) => <li key={route.route}>
+          <code>{route.route}</code>
+          <span>{route.count} calls · {route.errors} errors · mean {formatMs(route.mean_ms)} · max {formatMs(route.max_ms)}</span>
+        </li>)}</ul>
+      </section>}
     </aside>
   )
 }

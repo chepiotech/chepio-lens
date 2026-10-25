@@ -63,6 +63,15 @@ Every buffer is bounded; on overflow the oldest entry is dropped and ingest is n
 | Graceful shutdown | 5 s to finish in-flight ingest and close SSE streams | — |
 | UI SSE reconnect | browser `EventSource` default, then refetch `/api/graph` | Automatic |
 
+## UI activity window
+
+The logs panel loads 500 lines per page and keeps at most 2,000, sorted by timestamp and arrival sequence. Live
+refreshes follow SSE invalidations coalesced over 250 ms; an active refresh can catch up through at most four pages.
+There is no polling while idle or while the panel is closed. Loading earlier lines keeps the older end of the
+window and pauses live updates; resuming replaces it with the newest page. Scrolling upward pauses automatic
+updates, and reconnect/resync preserves a paused reading window until the reader resumes. Filter changes cancel
+previous requests. A missing/evicted request is explained in the inspector; failed loads can be retried.
+
 ## Failure behavior
 
 | Failure | What the user sees | Behavior |

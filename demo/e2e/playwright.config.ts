@@ -6,6 +6,8 @@ export default defineConfig({
   testDir: 'tests',
   timeout: 60_000,
   retries: 0,
+  // Every integration test uses the same collector and resets its in-memory session.
+  workers: 1,
   reporter: 'list',
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 })

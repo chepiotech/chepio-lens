@@ -1,0 +1,65 @@
+.investigation-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+  background: #15181e;
+  font-size: 0.8rem;
+  animation: panel-in 160ms ease-out;
+}
+
+.investigation-panel--right {
+  width: min(var(--panel-width), 70%);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.investigation-panel--bottom {
+  height: min(var(--panel-height), 70%);
+  width: 100%;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  animation-name: panel-up;
+}
+
+.investigation-panel__header, .investigation-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.investigation-panel__header {
+  flex: 0 0 auto;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.investigation-panel__header h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
+.investigation-panel button, .investigation-panel input, .investigation-panel select {
+  font: inherit;
+  color: inherit;
+  background: #1a1d24;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.3rem;
+  padding: 0.375rem 0.5rem;
+}
+.investigation-panel button { cursor: pointer; }
+.investigation-panel button:hover { background: #262b35; }
+.investigation-panel button:disabled { cursor: default; opacity: 0.5; }
+.investigation-panel :focus-visible { outline: 2px solid #7aa2f7; outline-offset: 2px; }
+.investigation-panel input, .investigation-panel select { width: 100%; min-width: 0; box-sizing: border-box; }
+.investigation-panel__resize { position: absolute; z-index: 2; touch-action: none; }
+.investigation-panel--right > .investigation-panel__resize { left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; }
+.investigation-panel--bottom > .investigation-panel__resize { top: -4px; left: 0; right: 0; height: 8px; cursor: row-resize; }
+.investigation-panel__resize:hover, .investigation-panel__resize:focus-visible { background: rgba(122, 162, 247, 0.3); }
+
+@keyframes panel-in { from { transform: translateX(12px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes panel-up { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .investigation-panel { animation: none; } }
+@media (max-width: 760px) {
+  .investigation-panel--right, .investigation-panel--bottom { width: 100%; height: min(max(var(--panel-height), 55vh), 65%); border-left: 0; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+  .investigation-panel--right > .investigation-panel__resize { display: none; }
+  .investigation-panel__header { padding: 0.5rem 0.75rem; }
+  .investigation-panel__dock { display: none; }
+}
