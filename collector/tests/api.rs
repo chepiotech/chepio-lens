@@ -19,6 +19,8 @@ use serde_json::Value;
 use tower::ServiceExt;
 
 const DEMO_TRACE: &str = include_str!("fixtures/demo_trace.json");
+/// The demo web's origin; `app()` allows it, as the collector does by default.
+const ORIGIN: &str = "http://localhost:5173";
 
 struct App {
     state: Arc<AppState>,
@@ -27,7 +29,7 @@ struct App {
 }
 
 fn app(limits: Limits) -> App {
-    let state = build(&[], limits);
+    let state = build(&[], &[ORIGIN.to_owned()], limits);
     App {
         otlp: otlp_router(state.clone()),
         ui: ui_router(state.clone()),
@@ -417,4 +419,212 @@ async fn ui_listener_sends_security_headers_and_serves_or_explains_the_ui() {
             }
         }
     }
+}
+
+fn preflight(origin: &str) -> Request<Body> {
+    Request::options("/v1/traces")
+        .header(header::ORIGIN, origin)
+        .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+        .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+        .body(Body::empty())
+        .unwrap()
+}
+
+fn browser_export(origin: &str) -> Request<Body> {
+    Request::post("/v1/traces")
+        .header(header::ORIGIN, origin)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(DEMO_TRACE))
+        .unwrap()
+}
+
+async fn send(router: &Router, request: Request<Body>) -> axum::response::Response {
+    router.clone().oneshot(request).await.unwrap()
+}
+
+#[tokio::test]
+async fn preflight_from_an_allowed_origin_is_answered() {
+    let app = app(Limits::default());
+
+    let response = send(&app.otlp, preflight(ORIGIN)).await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let headers = response.headers();
+    assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_ORIGIN], ORIGIN);
+    assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_METHODS], "POST");
+    assert_eq!(
+        headers[header::ACCESS_CONTROL_ALLOW_HEADERS],
+        "content-type"
+    );
+    assert_eq!(headers[header::ACCESS_CONTROL_MAX_AGE], "600");
+    assert!(
+        headers
+            .get_all(header::VARY)
+            .iter()
+            .any(|value| value.to_str().unwrap().contains("origin"))
+    );
+}
+
+#[tokio::test]
+async fn browser_export_from_an_allowed_origin_can_read_the_answer() {
+    let mut limits = Limits::default();
+    limits.http.max_concurrent_ingest = 0;
+    let busy = app(limits);
+    let app = app(Limits::default());
+
+    let accepted = send(&app.otlp, browser_export(ORIGIN)).await;
+    let refused = send(&busy.otlp, browser_export(ORIGIN)).await;
+
+    assert_eq!(accepted.status(), StatusCode::OK);
+    assert_eq!(
+        accepted.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+        ORIGIN
+    );
+    // The browser exporter honors `Retry-After` only when CORS exposes it.
+    assert_eq!(refused.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(
+        refused.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+        ORIGIN
+    );
+    assert_eq!(
+        refused.headers()[header::ACCESS_CONTROL_EXPOSE_HEADERS],
+        "retry-after"
+    );
+    assert_eq!(get_json(&app.ui, "/api/stats").await["spans_received"], 4);
+}
+
+#[tokio::test]
+async fn other_browser_origins_get_403_and_ingest_nothing() {
+    let app = app(Limits::default());
+
+    for origin in ["http://evil.test", "null", "http://localhost:5174"] {
+        for request in [preflight(origin), browser_export(origin)] {
+            let response = send(&app.otlp, request).await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{origin}");
+            assert!(
+                !response
+                    .headers()
+                    .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+                "{origin}"
+            );
+        }
+    }
+    assert_eq!(get_json(&app.ui, "/api/stats").await["spans_received"], 0);
+}
+
+#[tokio::test]
+async fn backend_exports_without_origin_are_not_affected_by_cors() {
+    let app = app(Limits::default());
+
+    let response = send(
+        &app.otlp,
+        Request::post("/v1/traces")
+            .header(header::CONTENT_TYPE, "application/x-protobuf")
+            .body(Body::from(protobuf_fixture()))
+            .unwrap(),
+    )
+    .await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        !response
+            .headers()
+            .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+    );
+}
+
+const WEB_SDK_NOTES: &str = include_str!("fixtures/web_sdk_notes.json");
+const WEB_API_NOTES: &[u8] = include_bytes!("fixtures/web_api_notes.pb");
+const WEB_TO_API: &str = "svc:demo-web->svc:demo-api";
+const API_TO_DB: &str = "svc:demo-api->db:postgresql:127.0.0.1:55432/demo";
+
+fn node_kinds(graph: &Value) -> Vec<(String, String)> {
+    let mut nodes: Vec<(String, String)> = graph["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|node| {
+            (
+                node["id"].as_str().unwrap().into(),
+                node["kind"].as_str().unwrap().into(),
+            )
+        })
+        .collect();
+    nodes.sort();
+    nodes
+}
+
+/// Browser (web SDK, JSON) and API (Rust SDK, protobuf) batches recorded in one session (`fixtures/README.md`):
+/// three fetches, each answered by the API with one query.
+#[tokio::test]
+async fn browser_and_api_batches_link_into_web_api_database_in_either_order() {
+    for browser_first in [true, false] {
+        let app = app(Limits::default());
+        let browser = || post(&app.otlp, "/v1/traces", "application/json", WEB_SDK_NOTES);
+        let api = || {
+            post(
+                &app.otlp,
+                "/v1/traces",
+                "application/x-protobuf",
+                WEB_API_NOTES.to_vec(),
+            )
+        };
+
+        let statuses = if browser_first {
+            [browser().await.0, api().await.0]
+        } else {
+            [api().await.0, browser().await.0]
+        };
+
+        assert_eq!(
+            statuses,
+            [StatusCode::OK; 2],
+            "browser first: {browser_first}"
+        );
+        let graph = get_json(&app.ui, "/api/graph").await;
+        assert_eq!(
+            node_kinds(&graph),
+            [
+                (
+                    "db:postgresql:127.0.0.1:55432/demo".into(),
+                    "database".into()
+                ),
+                ("svc:demo-api".into(), "service".into()),
+                ("svc:demo-web".into(), "frontend".into()),
+            ],
+            "browser first: {browser_first}"
+        );
+        let web = edge(&graph, WEB_TO_API);
+        assert_eq!(
+            (
+                web["count"].as_u64(),
+                web["errors"].as_u64(),
+                web["protocol"].as_str()
+            ),
+            (Some(3), Some(0), Some("http")),
+            "browser first: {browser_first}"
+        );
+        assert_eq!(
+            edge(&graph, API_TO_DB)["count"],
+            3,
+            "browser first: {browser_first}"
+        );
+    }
+}
+
+/// Without the API's spans (no `traceparent` reached a traced backend) the browser's calls count on the host they
+/// went to once the link window has passed.
+#[tokio::test]
+async fn browser_calls_without_a_traced_backend_reach_an_external_node() {
+    let app = app(Limits::default());
+    post(&app.otlp, "/v1/traces", "application/json", WEB_SDK_NOTES).await;
+    let now = app.state.clock.now();
+
+    app.state.ingest.tick(Now {
+        mono_ms: now.mono_ms + 10_000,
+        ..now
+    });
+
+    let graph = get_json(&app.ui, "/api/graph").await;
+    assert_eq!(edge(&graph, "svc:demo-web->ext:localhost:5173")["count"], 3);
 }

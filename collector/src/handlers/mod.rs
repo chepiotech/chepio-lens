@@ -1,6 +1,7 @@
 //! HTTP surface: the OTLP ingest listener and the UI listener (`docs/architecture/interfaces.md`, sections 1 and 3).
 
 mod assets;
+mod cors;
 mod ingest;
 mod ui;
 
@@ -11,7 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::Router;
-use axum::middleware::map_response;
+use axum::http::HeaderValue;
+use axum::middleware::{from_fn_with_state, map_response};
 use axum::routing::{get, post};
 use tokio::sync::Semaphore;
 // Services
@@ -36,10 +38,18 @@ pub struct AppState {
     sse_permits: Arc<Semaphore>,
     batches_busy: AtomicU64,
     warnings: Warnings,
+    cors_origins: Vec<HeaderValue>,
 }
 
 impl AppState {
-    pub fn new(ingest: Ingest, query: Query, clock: Clock, limits: HttpLimits) -> Arc<Self> {
+    /// `cors_origins` are already normalized (`app::Config`); a value that is not a valid header is skipped.
+    pub fn new(
+        ingest: Ingest,
+        query: Query,
+        clock: Clock,
+        limits: HttpLimits,
+        cors_origins: &[String],
+    ) -> Arc<Self> {
         Arc::new(Self {
             ingest,
             query,
@@ -49,14 +59,23 @@ impl AppState {
             sse_permits: Arc::new(Semaphore::new(limits.max_sse_clients)),
             batches_busy: AtomicU64::new(0),
             warnings: Warnings::default(),
+            cors_origins: cors_origins
+                .iter()
+                .filter_map(|origin| HeaderValue::from_str(origin).ok())
+                .collect(),
         })
     }
 }
 
-/// `POST /v1/traces`.
+/// `POST /v1/traces`, with CORS for the configured browser origins; other browser origins get `403`.
 pub fn otlp_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/v1/traces", post(ingest::traces))
+        .layer(cors::layer(&state.cors_origins))
+        .layer(from_fn_with_state(
+            state.clone(),
+            cors::reject_unknown_origins,
+        ))
         .with_state(state)
 }
 

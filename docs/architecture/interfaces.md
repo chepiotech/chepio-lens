@@ -1,7 +1,7 @@
 # Interfaces
 
 Status (2026-10-25): the collector side of sections 1, 3 and 4 and both SDKs without payload capture are
-implemented; collector CORS (section 1) is not built yet.
+implemented.
 Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
 (`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
@@ -13,7 +13,10 @@ Attribute keys, the legacy-to-stable mapping and the redaction rules are defined
   Response follows the OTLP spec: `200` with partial-success details (spans with invalid ids or over the per-request
   bound), `400` malformed, `408` body slower than 10 s, `413` body too large, `503` + `Retry-After: 1` when the
   ingest concurrency bound is reached.
-- CORS: only for origins listed in `CHEPIO_LENS_CORS_ORIGINS`; allowed method `POST`, allowed header `Content-Type`.
+- CORS: only for origins listed in `CHEPIO_LENS_CORS_ORIGINS`. Preflights from those origins get `200` with allowed
+  method `POST`, allowed header `Content-Type`, `Access-Control-Max-Age: 600`; every response to them carries
+  `Access-Control-Allow-Origin` and exposes `Retry-After`. A preflight or export with any other `Origin` (including
+  `null`) gets `403`. Requests without `Origin` (backend SDKs, curl) are not affected.
 - OTLP/gRPC is not supported in the MVP (ADR-0001).
 
 ### Attributes the collector reads
@@ -127,4 +130,4 @@ JSON shapes: `collector/src/types/api.rs`; the UI uses the TypeScript generated 
 | `CHEPIO_LENS_REDACT_KEYS` | SDKs, collector | empty | Extra keys to mask, comma-separated; added to the defaults in `security.md` |
 | `CHEPIO_LENS_OTLP_ADDR` | collector | `127.0.0.1:4318` | Ingest listener |
 | `CHEPIO_LENS_UI_ADDR` | collector | `127.0.0.1:4320` | UI and UI API listener |
-| `CHEPIO_LENS_CORS_ORIGINS` | collector | `http://localhost:5173` | Browser origins allowed to send spans |
+| `CHEPIO_LENS_CORS_ORIGINS` | collector | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to send spans, comma-separated `scheme://host[:port]`; no wildcard; empty allows none |

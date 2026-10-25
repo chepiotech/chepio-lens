@@ -29,7 +29,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let state = build(&config.redact_keys, Limits::default());
+    let state = build(&config.redact_keys, &config.cors_origins, Limits::default());
 
     let bind = |addr| async move {
         TcpListener::bind(addr)
@@ -45,6 +45,7 @@ async fn main() -> ExitCode {
         version = env!("CARGO_PKG_VERSION"),
         otlp = %config.otlp_addr,
         ui = %config.ui_addr,
+        cors_origins = %config.cors_origins.join(","),
         "chepio-lens collector listening"
     );
 

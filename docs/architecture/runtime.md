@@ -60,7 +60,7 @@ Every buffer is bounded; on overflow the oldest entry is dropped and ingest is n
 | Collector not running | App works normally; map is empty | SDK export fails fast, batch dropped |
 | Collector overloaded | Some requests missing on the map | `503` from ingest, SDK drops after its retry |
 | Malformed OTLP | Missing spans | `400`, warning logged at most once per minute per source |
-| Browser blocked by CORS | No frontend node; backend still visible | Documented in the connection guide; collector logs rejected preflights |
+| Browser blocked by CORS | No frontend node; backend still visible | Collector answers `403` and logs the rejected origin at most once per minute; documented in the connection guide |
 | Missing `traceparent` on backend calls | Frontend and backend appear unlinked | Frontend client spans go to an external node after the link window |
 | Clock skew between browser and server | Waterfall offsets look wrong | Durations are always per span; the UI marks a child that starts before its parent |
 | Store full | Old requests disappear from the list | Graph totals are kept |

@@ -11,6 +11,12 @@ pub const DEFAULT_OTLP_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::L
 /// Default UI and UI API listener (`CHEPIO_LENS_UI_ADDR`), loopback only (ADR-0003).
 pub const DEFAULT_UI_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 4320);
 
+/// Default browser origins allowed to post spans (`CHEPIO_LENS_CORS_ORIGINS`): the demo web, under both loopback names
+/// a developer may type.
+pub const DEFAULT_CORS_ORIGINS: &[&str] = &["http://localhost:5173", "http://127.0.0.1:5173"];
+/// How long browsers may cache a CORS preflight answer.
+pub const CORS_MAX_AGE: Duration = Duration::from_secs(600);
+
 pub const MAX_OTLP_BODY_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_CONCURRENT_INGEST: usize = 64;
 pub const MAX_STORED_REQUESTS: usize = 10_000;

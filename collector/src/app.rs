@@ -22,10 +22,10 @@ use crate::adapters::sse::SseHub;
 use crate::handlers::{AppState, HttpLimits};
 // Consts
 use crate::consts::{
-    BODY_READ_TIMEOUT, DEFAULT_OTLP_ADDR, DEFAULT_UI_ADDR, LINK_WINDOW, MAX_ATTRIBUTE_VALUE_BYTES,
-    MAX_CONCURRENT_INGEST, MAX_EDGES, MAX_NODES, MAX_ORPHAN_SERVERS, MAX_OTLP_BODY_BYTES,
-    MAX_PENDING_CLIENTS, MAX_SPANS_PER_REQUEST, MAX_SSE_CLIENTS, MAX_STORED_BYTES,
-    MAX_STORED_REQUESTS, SSE_BUFFER_EVENTS,
+    BODY_READ_TIMEOUT, DEFAULT_CORS_ORIGINS, DEFAULT_OTLP_ADDR, DEFAULT_UI_ADDR, LINK_WINDOW,
+    MAX_ATTRIBUTE_VALUE_BYTES, MAX_CONCURRENT_INGEST, MAX_EDGES, MAX_NODES, MAX_ORPHAN_SERVERS,
+    MAX_OTLP_BODY_BYTES, MAX_PENDING_CLIENTS, MAX_SPANS_PER_REQUEST, MAX_SSE_CLIENTS,
+    MAX_STORED_BYTES, MAX_STORED_REQUESTS, SSE_BUFFER_EVENTS,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,10 +34,13 @@ pub struct Config {
     pub ui_addr: SocketAddr,
     /// `CHEPIO_LENS_REDACT_KEYS`: added to the redaction defaults, never replacing them.
     pub redact_keys: Vec<String>,
+    /// `CHEPIO_LENS_CORS_ORIGINS`: browser origins allowed to post spans, normalized as browsers send them.
+    pub cors_origins: Vec<String>,
 }
 
 impl Config {
-    /// Reads `CHEPIO_LENS_OTLP_ADDR`, `CHEPIO_LENS_UI_ADDR` and `CHEPIO_LENS_REDACT_KEYS` through `var`.
+    /// Reads `CHEPIO_LENS_OTLP_ADDR`, `CHEPIO_LENS_UI_ADDR`, `CHEPIO_LENS_REDACT_KEYS` and
+    /// `CHEPIO_LENS_CORS_ORIGINS` through `var`.
     pub fn from_env(var: impl Fn(&str) -> Option<String>) -> Result<Self, String> {
         let addr = |name: &str, default: SocketAddr| match var(name) {
             Some(value) => value.parse().map_err(|error| {
@@ -57,7 +60,41 @@ impl Config {
                         .collect()
                 })
                 .unwrap_or_default(),
+            cors_origins: match var("CHEPIO_LENS_CORS_ORIGINS") {
+                Some(list) => list
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|origin| !origin.is_empty())
+                    .map(cors_origin)
+                    .collect::<Result<_, _>>()?,
+                None => DEFAULT_CORS_ORIGINS
+                    .iter()
+                    .map(|origin| (*origin).to_owned())
+                    .collect(),
+            },
         })
+    }
+}
+
+/// Browsers send `Origin` as `scheme://host[:port]` in lowercase, so a configured origin is normalized to that form;
+/// anything else (a path, a wildcard, another scheme) is refused rather than silently never matching.
+fn cors_origin(value: &str) -> Result<String, String> {
+    let origin = value.trim_end_matches('/').to_ascii_lowercase();
+    let host = origin
+        .strip_prefix("http://")
+        .or_else(|| origin.strip_prefix("https://"));
+    match host {
+        Some(host)
+            if !host.is_empty()
+                && host
+                    .chars()
+                    .all(|c| c.is_ascii_graphic() && !"/?#*@".contains(c)) =>
+        {
+            Ok(origin)
+        }
+        _ => Err(format!(
+            "CHEPIO_LENS_CORS_ORIGINS: {value:?} is not an origin like http://localhost:5173"
+        )),
     }
 }
 
@@ -102,7 +139,7 @@ impl Default for Limits {
     }
 }
 
-pub fn build(redact_keys: &[String], limits: Limits) -> Arc<AppState> {
+pub fn build(redact_keys: &[String], cors_origins: &[String], limits: Limits) -> Arc<AppState> {
     let keys: Vec<&str> = redact_keys.iter().map(String::as_str).collect();
     let shared = Arc::new(Shared::new(
         Box::new(MemoryStore::new(limits.store)),
@@ -116,7 +153,7 @@ pub fn build(redact_keys: &[String], limits: Limits) -> Arc<AppState> {
         Redactor::new(&keys),
     );
     let query = Query::new(shared, hub);
-    AppState::new(ingest, query, Clock::default(), limits.http)
+    AppState::new(ingest, query, Clock::default(), limits.http, cors_origins)
 }
 
 #[cfg(test)]
@@ -142,6 +179,7 @@ mod tests {
             (DEFAULT_OTLP_ADDR, DEFAULT_UI_ADDR)
         );
         assert!(config.redact_keys.is_empty());
+        assert_eq!(config.cors_origins, DEFAULT_CORS_ORIGINS);
     }
 
     #[test]
@@ -153,6 +191,40 @@ mod tests {
         .unwrap();
         assert_eq!(config.otlp_addr.to_string(), "0.0.0.0:14318");
         assert_eq!(config.redact_keys, ["ssn", "tenant_key"]);
+    }
+
+    #[test]
+    fn cors_origins_are_normalized_as_browsers_send_them() {
+        let listed = config(&[(
+            "CHEPIO_LENS_CORS_ORIGINS",
+            " HTTP://LocalHost:3000/ , ,https://app.test",
+        )])
+        .unwrap();
+        assert_eq!(
+            listed.cors_origins,
+            ["http://localhost:3000", "https://app.test"]
+        );
+        let none = config(&[("CHEPIO_LENS_CORS_ORIGINS", "")]).unwrap();
+        assert!(none.cors_origins.is_empty());
+    }
+
+    #[test]
+    fn values_that_are_not_origins_are_refused() {
+        for value in [
+            "*",
+            "http://*.test",
+            "localhost:5173",
+            "ftp://localhost",
+            "http://localhost:5173/app",
+            "http://",
+            "http://user@localhost",
+        ] {
+            let error = config(&[("CHEPIO_LENS_CORS_ORIGINS", value)]).unwrap_err();
+            assert!(
+                error.starts_with("CHEPIO_LENS_CORS_ORIGINS:"),
+                "{value}: {error}"
+            );
+        }
     }
 
     #[test]
