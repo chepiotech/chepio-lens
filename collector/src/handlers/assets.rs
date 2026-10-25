@@ -15,7 +15,8 @@ struct UiAssets;
 
 /// `docs/architecture/security.md`: payloads render as text, scripts and connections stay on this origin.
 const CONTENT_SECURITY: &str = "default-src 'self'; connect-src 'self'";
-const NOT_BUILT: &str = "The chepio-lens UI is not built. Run `pnpm --filter ui build`, then build the collector again.";
+const NOT_BUILT: &str = "The chepio-lens UI is not built into this binary. In a clone of chepio-lens run \
+`pnpm --filter ui build`, then build the collector again or `cargo install --path collector --locked`.";
 
 pub(super) async fn asset(uri: Uri) -> Response {
     let path = match uri.path().trim_start_matches('/') {

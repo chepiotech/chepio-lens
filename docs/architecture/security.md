@@ -14,8 +14,10 @@ the main risk: they carry passwords, tokens and personal data (ADR-0004).
 
 ## Rules
 
-- **Binding.** Both listeners default to `127.0.0.1`. In Docker the collector listens on `0.0.0.0` inside the
-  container, and compose publishes the ports to `127.0.0.1` on the host only (`127.0.0.1:4318:4318`).
+- **Binding.** Both listeners default to `127.0.0.1`, in the binary and in the image. In Docker the collector
+  listens on `0.0.0.0` inside the container, and compose publishes the ports to `127.0.0.1` on the host only
+  (`127.0.0.1:4318:4318`), in `demo/compose.yaml` and in `collector/compose.yaml`; `collector/image-smoke.sh` checks
+  the published addresses.
 - **No production, no shared networks.** Without authentication, anyone who reaches the ports reads all captured
   payloads. Production mode (auth, TLS, sampling) is a separate future decision (ADR-0003).
 - **SDKs are off by default.** Without `CHEPIO_LENS_ENDPOINT` (or an empty endpoint in the browser) the SDK is a

@@ -1,0 +1,20 @@
+# The chepio-lens collector on its own: `docker compose -f collector/compose.yaml up -d`, or copy the service into
+# your project's compose file. Map at http://localhost:4320, OTLP/HTTP at http://localhost:4318.
+#
+# Variables (all optional):
+#   CHEPIO_LENS_CORS_ORIGINS  browser origins of your app that may send spans, comma-separated (default: Vite on 5173)
+#   CHEPIO_LENS_IMAGE         image to run (default: the published image)
+#   CHEPIO_LENS_OTLP_PORT, CHEPIO_LENS_UI_PORT   host ports (defaults 4318, 4320)
+name: chepio-lens
+services:
+  chepio-lens:
+    image: ${CHEPIO_LENS_IMAGE:-ghcr.io/chepiotech/chepio-lens:latest}
+    environment:
+      # Inside the container the collector must listen on all its interfaces; the ports below are published on
+      # 127.0.0.1 only, so nothing outside this machine reaches it (ADR-0003).
+      CHEPIO_LENS_OTLP_ADDR: 0.0.0.0:4318
+      CHEPIO_LENS_UI_ADDR: 0.0.0.0:4320
+      CHEPIO_LENS_CORS_ORIGINS: ${CHEPIO_LENS_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "127.0.0.1:${CHEPIO_LENS_OTLP_PORT:-4318}:4318"
+      - "127.0.0.1:${CHEPIO_LENS_UI_PORT:-4320}:4320"

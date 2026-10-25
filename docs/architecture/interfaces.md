@@ -121,7 +121,7 @@ const lens = initLens({
   or button/link text, never input values; navigation captures only the pathname. Initialize before registering
   application handlers. The first fetch started synchronously by an event handler supplies its actual trace/span
   ids to the action. Handlers after `await`, timers, pre-existing handlers and inline handlers have no promised
-  correlation; the SDK never guesses a link from temporal proximity (ADR-0011). It creates no action spans.
+  correlation; the SDK never guesses a link from temporal proximity (ADR-0012). It creates no action spans.
 - Shutdown restores console and history methods and stops action capture. A single pass-through event-listener
   wrapper remains to preserve listener identity for removal and duplicate registration after shutdown/reinit.
 - Export: OTLP/HTTP JSON to `<endpoint>/v1/traces` and `<endpoint>/v1/logs` with `fetch` (`keepalive`, CORS mode, no credentials), batch every

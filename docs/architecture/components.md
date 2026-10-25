@@ -36,6 +36,10 @@ backend SDK emits.
 Workspaces: one Cargo workspace (collector, conventions, Rust SDK, demo API) and one pnpm workspace (UI, web SDK,
 demo web) at the repository root.
 
+Distribution: the collector as the image `ghcr.io/chepiotech/chepio-lens` (amd64 and arm64, pushed from `v*` tags)
+run with `collector/compose.yaml`, or installed from a clone (ADR-0011); the SDKs as git dependencies of this
+repository until `v0.1.0` (ADR-0007).
+
 ## Allowed dependencies
 
 ```
@@ -91,5 +95,5 @@ Layers follow the global import groups; arrows show allowed imports.
   explicit. Unknown/evicted requests and failed loads have recoverable states.
 
 App log serialization belongs to the SDKs; collector log normalization/redaction belongs to its ingest service.
-The UI uses nullable log context directly and fetches request details only when a trace id exists. ADR-0011 records
+The UI uses nullable log context directly and fetches request details only when a trace id exists. ADR-0012 records
 the synchronous browser action boundary; no new dependency between SDKs and collector was introduced.
