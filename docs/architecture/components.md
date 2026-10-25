@@ -37,8 +37,9 @@ Workspaces: one Cargo workspace (collector, conventions, Rust SDK, demo API) and
 demo web) at the repository root.
 
 Distribution: the collector as the image `ghcr.io/chepiotech/chepio-lens` (amd64 and arm64, pushed from `v*` tags)
-run with `collector/compose.yaml`, or installed from a clone (ADR-0011); the SDKs as git dependencies of this
-repository until `v0.1.0` (ADR-0007).
+run with `collector/compose.yaml`, or installed from a clone (ADR-0011); the Rust SDK as a git dependency pinned to a
+tag, the web SDK as a tarball attached to each GitHub release, or with pnpm from the git subdirectory before the first
+release (ADR-0014). How to connect an app: `docs/workflows/connect-a-project.md`.
 
 ## Allowed dependencies
 

@@ -174,7 +174,12 @@ function guard(capture: () => void) {
 
 /** Masks URL query parameters before export (I2, ADR-0004); the collector masks again on ingest. */
 class RedactingProcessor implements SpanProcessor {
-  constructor(private readonly redactor: Redactor) {}
+  // A plain field, not a parameter property: apps type-check this source with `erasableSyntaxOnly` (Vite's template).
+  private readonly redactor: Redactor
+
+  constructor(redactor: Redactor) {
+    this.redactor = redactor
+  }
 
   // Experimental in OpenTelemetry JS: the last moment the span is still writable. Versions are pinned and
   // `initLens.test.ts` fails if the hook stops being called.

@@ -61,10 +61,12 @@ export class MapRenderer {
   private frame = 0
   private readonly resizeObserver: ResizeObserver
 
-  constructor(
-    private readonly canvas: HTMLCanvasElement,
-    private readonly onSelect: (selection: Selection) => void,
-  ) {
+  private readonly canvas: HTMLCanvasElement
+  private readonly onSelect: (selection: Selection) => void
+
+  constructor(canvas: HTMLCanvasElement, onSelect: (selection: Selection) => void) {
+    this.canvas = canvas
+    this.onSelect = onSelect
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas 2D is not available')
     this.ctx = ctx

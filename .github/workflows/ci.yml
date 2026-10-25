@@ -63,6 +63,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r typecheck
       - run: pnpm -r test
+      - name: Web SDK tarball installs with npm and type-checks with Vite's strict flags
+        run: sdk/web/pack-check.sh
 
   e2e:
     runs-on: ubuntu-latest

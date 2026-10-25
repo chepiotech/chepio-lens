@@ -1,7 +1,7 @@
 # ADR-0007: Dual MIT OR Apache-2.0 license; SDKs ship as git dependencies until v0.1.0
 
 ## Status
-Accepted
+Accepted. How projects get the web SDK is superseded by ADR-0014 (tarball on GitHub releases).
 
 ## Date
 2026-10-23
