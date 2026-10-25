@@ -14,6 +14,7 @@ import {
 } from '@opentelemetry/sdk-trace'
 import { ATTR_SERVICE_NAME, ATTR_URL_FULL } from '@opentelemetry/semantic-conventions'
 // Domain
+import { type CaptureConfig, DEFAULT_BODY_LIMIT, captureRequest, captureResponse } from './capture'
 import { Redactor } from './redaction'
 // Consts
 import { LENS_REDACTION_COUNT, LENS_SDK_VERSION, SDK_VERSION } from './consts'
@@ -34,6 +35,10 @@ export type LensOptions = {
   propagateTo?: (string | RegExp)[]
   /** Extra keys to mask, added to the defaults (docs/architecture/security.md). */
   redactKeys?: string[]
+  /** Capture request and response bodies of text content types (default true); headers are always captured. */
+  captureBodies?: boolean
+  /** Most bytes of a masked body exported (default 16384). */
+  bodyLimit?: number
 }
 
 export type Lens = {
@@ -63,13 +68,19 @@ export function initLens(options: LensOptions): Lens {
     return DISABLED
   }
 
+  const redactor = new Redactor(options.redactKeys ?? [])
+  const capture: CaptureConfig = {
+    bodies: options.captureBodies ?? true,
+    bodyLimit: options.bodyLimit ?? DEFAULT_BODY_LIMIT,
+    redactor,
+  }
   const exporter = new OTLPTraceExporter({ url: tracesUrl, timeoutMillis: EXPORT_TIMEOUT_MS })
   const provider = new TracerProvider({
     resource: defaultResource().merge(
       resourceFromAttributes({ [ATTR_SERVICE_NAME]: options.serviceName, [LENS_SDK_VERSION]: SDK_VERSION }),
     ),
     spanProcessors: [
-      new RedactingProcessor(new Redactor(options.redactKeys ?? [])),
+      new RedactingProcessor(redactor),
       new BatchSpanProcessor({
         exporter,
         scheduledDelayMillis: EXPORT_INTERVAL_MS,
@@ -82,18 +93,46 @@ export function initLens(options: LensOptions): Lens {
   trace.setGlobalTracerProvider(provider)
   context.setGlobalContextManager(new StackContextManager().enable())
   propagation.setGlobalPropagator(new W3CTraceContextPropagator())
+  // The instrumentation calls `requestHook` synchronously inside the instrumented `fetch`; the outer wrapper below
+  // picks the span up there and clones the response before the app can consume it.
+  let handedOver: Span | undefined
   const unregister = registerInstrumentations({
     tracerProvider: provider,
     instrumentations: [
-      new FetchInstrumentation({ ignoreUrls: [tracesUrl], propagateTraceHeaderCorsUrls: options.propagateTo ?? [] }),
+      new FetchInstrumentation({
+        ignoreUrls: [tracesUrl],
+        propagateTraceHeaderCorsUrls: options.propagateTo ?? [],
+        requestHook: (span, request) => {
+          handedOver = span as Span
+          guard(() => captureRequest(span, request, capture))
+        },
+      }),
     ],
   })
+  const instrumented = globalThis.fetch
+  const withBodies = Object.assign(
+    function fetchWithBodies(this: unknown, ...args: Parameters<typeof fetch>): Promise<Response> {
+      handedOver = undefined
+      const result = instrumented.apply(this, args)
+      const span = handedOver
+      handedOver = undefined
+      if (!span) return result
+      return result.then((response) => {
+        guard(() => captureResponse(span, response, capture))
+        return response
+      })
+    },
+    // The exporter calls `fetch.__original` so its own requests are not traced; keep that path open.
+    { __original: (instrumented as { __original?: typeof fetch }).__original },
+  )
+  globalThis.fetch = withBodies
 
   const lens: Lens = {
     enabled: true,
     shutdown: async () => {
       if (active !== lens) return
       active = null
+      if (globalThis.fetch === withBodies) globalThis.fetch = instrumented
       unregister()
       try {
         await provider.shutdown()
@@ -106,6 +145,15 @@ export function initLens(options: LensOptions): Lens {
   }
   active = lens
   return lens
+}
+
+/** Capture must never break the app's request (I1). */
+function guard(capture: () => void) {
+  try {
+    capture()
+  } catch {
+    // Not captured; the request goes on.
+  }
 }
 
 /** Masks URL query parameters before export (I2, ADR-0004); the collector masks again on ingest. */

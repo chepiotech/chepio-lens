@@ -1,7 +1,7 @@
 # Interfaces
 
-Status (2026-10-25): the collector side of sections 1, 3 and 4, the Rust SDK with header and body capture, and the
-web SDK without payload capture are implemented.
+Status (2026-10-25): the collector side of sections 1, 3 and 4 and both SDKs with header and body capture are
+implemented.
 Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
 (`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
@@ -84,6 +84,8 @@ const lens = initLens({
   endpoint: import.meta.env.VITE_CHEPIO_LENS_ENDPOINT, // no-op when empty or missing
   propagateTo: [/^http:\/\/localhost:8080\//],         // cross-origin targets that get traceparent
   redactKeys: ['tenant'],                               // optional, added to the defaults
+  captureBodies: true,                                  // optional; headers are always captured
+  bodyLimit: 16_384,                                    // optional, bytes of a masked body
 })
 // await lens.shutdown()                                 // stops tracing, flushes, waits at most 2 s
 ```
@@ -92,8 +94,12 @@ const lens = initLens({
   `http.request.method`, `url.full`, `server.address`, `server.port`, `http.response.status_code`; status error for
   4xx and 5xx. Same-origin requests always get `traceparent`, cross-origin ones only when they match `propagateTo`
   (the target must allow the header in its CORS policy).
-- `url.full` has its query parameters masked before export (`lens.redaction.count` on the span); headers and bodies
-  are not captured yet.
+- `url.full` has its query parameters masked before export (`lens.redaction.count` on the span).
+- Headers and bodies by the rules in `security.md` (Body capture), with the same attributes as the Rust SDK. Request
+  bodies are read only when the app passes a string or `URLSearchParams`, or a `Request` (from a clone); response
+  bodies from a clone taken before the app receives the response (an outer `fetch` wrapper around the
+  instrumentation, which hands its span over through `requestHook`). The app's own request and response are not
+  touched. A body still being read when the span ends (300 ms after the response completes) is left out.
 - Export: OTLP/HTTP JSON to `<endpoint>/v1/traces` with `fetch` (`keepalive`, CORS mode, no credentials), batch every
   500 ms, queue 2,048 spans, timeout 2 s; export requests are not traced. An endpoint that is not a URL prints one
   console warning and leaves the SDK off; `initLens` never throws. A second call while running returns the running
@@ -131,8 +137,8 @@ JSON shapes: `collector/src/types/api.rs`; the UI uses the TypeScript generated 
 |---|---|---|---|
 | `CHEPIO_LENS_ENDPOINT` | Rust SDK | unset (SDK off) | Collector OTLP base URL, e.g. `http://localhost:4318` |
 | `VITE_CHEPIO_LENS_ENDPOINT` (or the app's own env) | web SDK via app config | unset (SDK off) | Same, for the browser |
-| `CHEPIO_LENS_CAPTURE_BODIES` | both SDKs | `true` | Capture request and response bodies (`true`/`1`, `false`/`0`); headers are always captured |
-| `CHEPIO_LENS_BODY_LIMIT` | both SDKs | `16384` bytes | Max exported bytes per redacted body |
+| `CHEPIO_LENS_CAPTURE_BODIES` (web: `captureBodies` option) | both SDKs | `true` | Capture request and response bodies (`true`/`1`, `false`/`0`); headers are always captured |
+| `CHEPIO_LENS_BODY_LIMIT` (web: `bodyLimit` option) | both SDKs | `16384` bytes | Max exported bytes per redacted body |
 | `CHEPIO_LENS_REDACT_KEYS` | SDKs, collector | empty | Extra keys to mask, comma-separated; added to the defaults in `security.md` |
 | `CHEPIO_LENS_OTLP_ADDR` | collector | `127.0.0.1:4318` | Ingest listener |
 | `CHEPIO_LENS_UI_ADDR` | collector | `127.0.0.1:4320` | UI and UI API listener |
