@@ -1,0 +1,77 @@
+.map-legend {
+  position: absolute;
+  bottom: 1rem;
+  left: 1rem;
+  max-width: calc(100% - 2rem);
+  max-height: calc(100% - 2rem);
+  overflow: auto;
+  background: rgba(26, 29, 36, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  color: #c0c4cc;
+}
+
+.map-legend__summary {
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  color: #a3a8b3;
+}
+
+.map-legend__summary:focus-visible {
+  outline: 2px solid #7aa2f7;
+  outline-offset: 2px;
+}
+
+.map-legend__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem 1rem;
+  margin: 0;
+  padding: 0 0.75rem 0.6rem;
+  list-style: none;
+}
+
+.map-legend__item {
+  display: grid;
+  grid-template-columns: 1.4rem 2.75rem 1fr;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.map-legend__sample {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 1px solid;
+  border-radius: 50%;
+  background: #0f1115;
+}
+
+.map-legend__icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.map-legend__badge {
+  position: absolute;
+  right: -0.15rem;
+  bottom: -0.1rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: #0f1115;
+}
+
+.map-legend__label {
+  font-weight: 600;
+  font-size: 0.65rem;
+}
+
+@media (max-width: 760px) {
+  .map-legend__list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

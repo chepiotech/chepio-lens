@@ -8,6 +8,7 @@ pub mod linker;
 pub mod log;
 pub mod log_record;
 pub mod node;
+pub mod packet;
 pub mod request;
 pub mod span;
 pub mod time;

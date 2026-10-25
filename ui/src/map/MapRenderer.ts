@@ -1,10 +1,13 @@
 // Types
 import type { EdgeView } from '../api/generated/EdgeView'
+import type { LogEntryView } from '../api/generated/LogEntryView'
 import type { NodeView } from '../api/generated/NodeView'
 // Utils
 import { formatMs } from './formatMs'
 import { type Camera, distanceToCurve, edgeCurve, fitCamera, insideNode, pointOnCurve, toWorld, zoomAt } from './geometry'
+import { type LucideIcon, lucideIcons } from './icons/lucideIcons'
 import { NODE_HEIGHT, NODE_WIDTH, type Point, layoutGraph } from './layoutGraph'
+import { FLASH_MS, type Glyph, PACKET_COLORS, flashGlyph, packetName, packetPhase, requestGlyph, responseGlyph } from './packets'
 import type { Pulse } from './requestPulses'
 
 export type Selection = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null
@@ -26,10 +29,17 @@ const COLORS = {
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
 /** Bound on animated pulses; the oldest are dropped first. */
 const MAX_PULSES = 400
+/** Bound on log and action flashes at nodes; the oldest are dropped first. */
+const MAX_FLASHES = 100
+/** Packet icon size and the disc behind it, in map pixels; Lucide draws on a 24-unit grid. */
+const ICON_PX = 16
+const ICON_DISC_PX = 11
+const BADGE_PX = 9
 const CLICK_SLOP_PX = 4
 const EDGE_HIT_PX = 6
 
-type ActivePulse = { edgeId: string; start: number; durationMs: number }
+type ActivePulse = Pulse & { start: number; request: Glyph | null; response: Glyph | null }
+type ActiveFlash = { nodeId: string; glyph: Glyph; start: number }
 type Drag = { x: number; y: number; moved: boolean }
 
 /** Canvas 2D map outside React's render cycle (ADR-0006): React passes data in and receives selections out. */
@@ -40,6 +50,9 @@ export class MapRenderer {
   private edges: EdgeView[] = []
   private positions = new Map<string, Point>()
   private pulses: ActivePulse[] = []
+  private flashes: ActiveFlash[] = []
+  private readonly iconPaths = new Map<LucideIcon, Path2D[]>()
+  private readonly reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
   private animatedRequests = 0
   private selection: Selection = null
   private userMoved = false
@@ -77,13 +90,31 @@ export class MapRenderer {
     this.invalidate(false)
   }
 
-  /** Animates one request: a dot per hop, timed by `pulsesFor`. */
+  /** Animates one request: per hop its request icon out and its response icon back, timed by `pulsesFor`. */
   pulse(pulses: Pulse[]) {
-    // Exposed on the canvas for the browser end-to-end test: how many requests the map has animated.
+    // Exposed on the canvas for the browser end-to-end test: how many requests the map has animated, and what the
+    // last one carried.
     this.canvas.dataset.animatedRequests = String(++this.animatedRequests)
+    this.canvas.dataset.lastPackets = pulses.map((pulse) => packetName(pulse.packet)).join(' ')
     const now = performance.now()
-    for (const { edgeId, delayMs, durationMs } of pulses) this.pulses.push({ edgeId, start: now + delayMs, durationMs })
+    for (const pulse of pulses) {
+      this.pulses.push({
+        ...pulse,
+        start: now + pulse.delayMs,
+        request: pulse.packet && requestGlyph(pulse.packet),
+        response: pulse.packet && responseGlyph(pulse.packet),
+      })
+    }
     if (this.pulses.length > MAX_PULSES) this.pulses.splice(0, this.pulses.length - MAX_PULSES)
+  }
+
+  /** Shows a log record or user action at its nodes for `FLASH_MS`; spans flash nothing (they travel as packets). */
+  flash(entry: LogEntryView) {
+    const glyph = flashGlyph(entry)
+    if (!glyph) return
+    const now = performance.now()
+    for (const nodeId of entry.nodes) this.flashes.push({ nodeId, glyph, start: now })
+    if (this.flashes.length > MAX_FLASHES) this.flashes.splice(0, this.flashes.length - MAX_FLASHES)
   }
 
   destroy() {
@@ -102,10 +133,11 @@ export class MapRenderer {
   }
 
   private readonly loop = (now: number) => {
-    const hadPulses = this.pulses.length > 0
+    const hadAnimations = this.pulses.length > 0 || this.flashes.length > 0
     this.pulses = this.pulses.filter((pulse) => now - pulse.start < pulse.durationMs)
-    // One more frame after the last pulse ends, so its final position does not stay on the canvas.
-    if (this.dirty || hadPulses) {
+    this.flashes = this.flashes.filter((flash) => now - flash.start < FLASH_MS)
+    // One more frame after the last animation ends, so its final position does not stay on the canvas.
+    if (this.dirty || hadAnimations) {
       this.draw(now)
       this.dirty = false
     }
@@ -137,6 +169,7 @@ export class MapRenderer {
     for (const edge of this.edges) this.drawEdge(edge)
     for (const pulse of this.pulses) this.drawPulse(pulse, now)
     for (const node of this.nodes) this.drawNode(node)
+    this.drawFlashes(now)
   }
 
   private curve(edge: EdgeView) {
@@ -171,7 +204,8 @@ export class MapRenderer {
     ctx.textAlign = 'center'
     ctx.fillStyle = edge.last_error ? COLORS.error : COLORS.muted
     const calls = `${edge.count} ${edge.count === 1 ? 'call' : 'calls'}`
-    ctx.fillText(`Last ${formatMs(edge.last_duration_ms)}${edge.last_error ? ' · error' : ''} · ${calls}`, middle.x, middle.y - 8)
+    // High enough that a packet icon passing the middle does not cover it.
+    ctx.fillText(`Last ${formatMs(edge.last_duration_ms)}${edge.last_error ? ' · error' : ''} · ${calls}`, middle.x, middle.y - 15)
   }
 
   private drawPulse(pulse: ActivePulse, now: number) {
@@ -180,11 +214,86 @@ export class MapRenderer {
     const edge = this.edges.find((candidate) => candidate.id === pulse.edgeId)
     const curve = edge && this.curve(edge)
     if (!curve) return
-    const point = pointOnCurve(curve, progress)
-    this.ctx.fillStyle = COLORS.pulse
-    this.ctx.beginPath()
-    this.ctx.arc(point.x, point.y, 4, 0, Math.PI * 2)
-    this.ctx.fill()
+    if (!pulse.request || !pulse.response) {
+      // No packet data (the caller span was evicted): the plain dot.
+      const point = pointOnCurve(curve, progress)
+      this.ctx.fillStyle = COLORS.pulse
+      this.ctx.beginPath()
+      this.ctx.arc(point.x, point.y, 4, 0, Math.PI * 2)
+      this.ctx.fill()
+      return
+    }
+    // Reduced motion: the icons do not travel; request then response sit at the middle of the edge.
+    const phase = this.reducedMotion?.matches
+      ? { side: progress < 0.5 ? 'request' : 'response', t: 0.5 }
+      : packetPhase(progress, pulse.outbound, pulse.inbound)
+    this.drawGlyph(phase.side === 'request' ? pulse.request : pulse.response, pointOnCurve(curve, phase.t), 1)
+  }
+
+  /** Log and action icons rise and fade above the top-right corner of their node, side by side when several. */
+  private drawFlashes(now: number) {
+    const perNode = new Map<string, number>()
+    for (const flash of this.flashes) {
+      const center = this.positions.get(flash.nodeId)
+      if (!center) continue
+      const index = perNode.get(flash.nodeId) ?? 0
+      perNode.set(flash.nodeId, index + 1)
+      const progress = (now - flash.start) / FLASH_MS
+      const rise = this.reducedMotion?.matches ? 0 : 10 * progress
+      const point = {
+        x: center.x + NODE_WIDTH / 2 - 14 - (index % 6) * 34,
+        y: center.y - NODE_HEIGHT / 2 - 6 - rise,
+      }
+      this.drawGlyph(flash.glyph, point, 1 - progress * progress)
+    }
+  }
+
+  private drawGlyph(glyph: Glyph, center: Point, alpha: number) {
+    const { ctx } = this
+    ctx.save()
+    ctx.globalAlpha = alpha
+    // A disc behind the icon keeps it readable over edges and their labels.
+    ctx.fillStyle = COLORS.background
+    ctx.strokeStyle = glyph.color
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.arc(center.x, center.y, ICON_DISC_PX, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+    this.strokeIcon(glyph.icon, center.x - ICON_PX / 2, center.y - ICON_PX / 2, ICON_PX, glyph.color)
+    if (glyph.badge) {
+      ctx.fillStyle = COLORS.background
+      ctx.beginPath()
+      ctx.arc(center.x + 7, center.y + 6, BADGE_PX / 2 + 1.5, 0, Math.PI * 2)
+      ctx.fill()
+      this.strokeIcon(glyph.badge, center.x + 7 - BADGE_PX / 2, center.y + 6 - BADGE_PX / 2, BADGE_PX, PACKET_COLORS.badge)
+    }
+    if (glyph.label) {
+      ctx.font = `600 9px ${FONT}`
+      ctx.textAlign = 'center'
+      ctx.fillStyle = glyph.color
+      ctx.fillText(glyph.label, center.x, center.y + ICON_DISC_PX + 10)
+    }
+    ctx.restore()
+  }
+
+  /** A Lucide icon: round 2-unit strokes on a 24-unit grid, scaled to `size` pixels at (`x`, `y`). */
+  private strokeIcon(icon: LucideIcon, x: number, y: number, size: number, color: string) {
+    let paths = this.iconPaths.get(icon)
+    if (!paths) {
+      paths = lucideIcons[icon].map((data) => new Path2D(data))
+      this.iconPaths.set(icon, paths)
+    }
+    const { ctx } = this
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(size / 24, size / 24)
+    ctx.strokeStyle = color
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    for (const path of paths) ctx.stroke(path)
+    ctx.restore()
   }
 
   private drawNode(node: NodeView) {

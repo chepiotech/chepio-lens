@@ -54,6 +54,8 @@ test('one click in the demo shows web → api → postgres on the map, animated 
 
   // The request's batches arrive separately; the map still animates it exactly once.
   await expect(canvas).toHaveAttribute('data-animated-requests', '1', { timeout: 5_000 })
+  // Each hop carries what travelled: the JSON POST to the API, then the INSERT into Postgres (packet icons).
+  await expect(canvas).toHaveAttribute('data-last-packets', 'http:POST sql:INSERT')
   await map.waitForTimeout(2_500)
   await expect(canvas).toHaveAttribute('data-animated-requests', '1')
 })

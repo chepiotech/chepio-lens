@@ -2,9 +2,12 @@
 // `perf.html` is not a build input, so production builds and the collector never contain it. Driven by
 // `pnpm --filter demo-e2e perf`; results are published on `window.mapPerf`.
 
+// Types
+import type { LogEntryView } from '../api/generated/LogEntryView'
+import type { PacketView } from '../api/generated/PacketView'
 // Utils
 import { MapRenderer } from '../map/MapRenderer'
-import type { Pulse } from '../map/requestPulses'
+import { MIN_TRAVEL_SHARE, type Pulse, TRAVEL_SHARE } from '../map/requestPulses'
 import { syntheticGraph } from './syntheticGraph'
 
 const WARM_UP_MS = 2_000
@@ -12,6 +15,24 @@ const MEASURE_MS = 10_000
 /** Requests started every 100 ms and how long each stays on screen: 10 × 2 s / 0.1 s = 200 animated at once. */
 const REQUESTS_PER_TICK = 10
 const REQUEST_MS = 2_000
+/** Log records and user actions flashed at nodes every 100 ms: 2 × 1.2 s / 0.1 s = 24 on screen at once. */
+const FLASHES_PER_TICK = 2
+
+/** Every packet kind the map draws, in turn: icons, badges and labels all cost drawing time. */
+const PACKETS: PacketView[] = [
+  { kind: 'http', operation: 'POST', request_body: 'json', response_body: 'json', status_code: 201, error: false },
+  { kind: 'https', operation: 'GET', request_body: 'none', response_body: 'json', status_code: 200, error: false },
+  { kind: 'http', operation: 'PUT', request_body: 'form', response_body: 'text', status_code: 200, error: false },
+  { kind: 'http', operation: 'GET', request_body: 'none', response_body: 'binary', status_code: 500, error: true },
+  { kind: 'sql', operation: 'SELECT', request_body: 'none', response_body: 'none', status_code: null, error: false },
+  { kind: 'sql', operation: 'INSERT', request_body: 'none', response_body: 'none', status_code: null, error: false },
+]
+const FLASH_TEXTS: Pick<LogEntryView, 'kind' | 'text' | 'level'>[] = [
+  { kind: 'log', text: 'note saved', level: 'info' },
+  { kind: 'log', text: 'slow query', level: 'warn' },
+  { kind: 'action', text: 'click Add', level: null },
+  { kind: 'action', text: 'navigate /notes', level: null },
+]
 
 export type MapPerf = {
   frames: number
@@ -63,10 +84,24 @@ const ticker = setInterval(() => {
     request += 1
     if (!edge || !next) continue
     const pulses: Pulse[] = [
-      { edgeId: edge.id, delayMs: 0, durationMs: REQUEST_MS },
-      { edgeId: next.id, delayMs: REQUEST_MS / 4, durationMs: REQUEST_MS / 2 },
+      {
+        edgeId: edge.id, delayMs: 0, durationMs: REQUEST_MS, packet: PACKETS[request % PACKETS.length]!,
+        outbound: MIN_TRAVEL_SHARE, inbound: 1 - MIN_TRAVEL_SHARE,
+      },
+      {
+        edgeId: next.id, delayMs: REQUEST_MS / 4, durationMs: REQUEST_MS / 2, packet: PACKETS[(request + 4) % PACKETS.length]!,
+        outbound: TRAVEL_SHARE, inbound: 1 - TRAVEL_SHARE,
+      },
     ]
     renderer.pulse(pulses)
+  }
+  for (let i = 0; i < FLASHES_PER_TICK; i += 1) {
+    const node = graph.nodes[(request + i * 13) % graph.nodes.length]
+    if (!node) continue
+    renderer.flash({
+      id: String(request), trace_id: null, span_id: null, time: '0', duration_ms: null, layer: 'backend', service: node.label,
+      nodes: [node.id], status_code: null, error: false, record: null, ...FLASH_TEXTS[(request + i) % FLASH_TEXTS.length]!,
+    })
   }
 }, 100)
 

@@ -30,8 +30,8 @@ restarts, production use, authentication.
 | Collector ingest throughput | ≥ 2,000 spans/s sustained on a laptop, using < 1 CPU core | 2,000 spans/s at 0.01 cores; maximum ≈ 374,000 spans/s at 1.6 cores, batch p99 6 ms (B) |
 | Collector memory at default bounds | RSS ≤ 300 MiB | 60 MiB with the store full by count (10,000 requests of 4 spans, no bodies); 3.4 MiB idle (B). Full by bytes (with bodies) not measured yet |
 | Collector startup | ≤ 1 s | 0.56 s to `/healthz` answering (B) |
-| Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | Bodies on: +0.13 ms at p95, +0.05 ms at p50 over the whole mix; requests without a database query +0.13–0.17 ms at p95, +0.03 ms at p50. Exporting without bodies +0.28 ms at p95; SDK without an endpoint +0.07 ms (E). With app log export (4.9): bodies on +0.24 ms at p95, +0.11 ms at p50; the most is a 100 KB JSON response, +0.47 ms at p50 and +0.98 ms at p95, spent masking the whole body (F) |
-| Map rendering | 60 fps with 50 nodes, 100 edges, 200 animated requests | 60 fps: 600 frames in 10 s, none late; draw p50/p95/max 0.6 / 0.8 / 1.0 ms at device pixel ratio 1, 0.6 / 0.7 / 0.8 ms at 2 (JavaScript side; rasterization is not included) (D) |
+| Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | Bodies on: +0.13 ms at p95, +0.05 ms at p50 over the whole mix; requests without a database query +0.13–0.17 ms at p95, +0.03 ms at p50. Exporting without bodies +0.28 ms at p95; SDK without an endpoint +0.07 ms (E). With app log export: bodies on +0.24 ms at p95, +0.11 ms at p50; the most is a 100 KB JSON response, +0.47 ms at p50 and +0.98 ms at p95, spent masking the whole body (F) |
+| Map rendering | 60 fps with 50 nodes, 100 edges, 200 animated requests | 60 fps: 600 frames in 10 s, none late; draw p50/p95/max 0.6 / 0.8 / 1.0 ms at device pixel ratio 1, 0.6 / 0.7 / 0.8 ms at 2 (JavaScript side; rasterization is not included) (D). With packet icons and node flashes: still 60 fps, none late; draw 1.6 / 1.9 / 2.7 ms at 1, 1.3 / 1.5 / 2.4 ms at 2 (G) |
 | Collector unavailable | Zero errors and no measurable latency change in the app | Rust SDK, nothing listening at the endpoint: 0 errors in 20,000 requests; p50 +0.06 ms, p95 −0.13 ms, within the noise (E); with app log export 0 errors in 10,000, p95 +0.15 ms (F) |
 
 Measurement runs (2026-10-24, Apple M1 Pro, 10 cores, 16 GiB, macOS 26.6, release builds, everything on one
@@ -77,7 +77,7 @@ with other builds, load average 10 at the start and 47 at the end):
   +2 ms) are within the same noise. The collector rejected and dropped no spans.
 
 Measurement run (2026-10-25, same machine, demo stack's Postgres and collector in Docker Desktop, after app log
-export (4.9); load average 3–5):
+export; load average 3–5):
 
 - (F) `cargo run --release -p demo-api --features lens --example sdk_overhead -- --collector http://127.0.0.1:4318`:
   as (E) with the defaults, 10 rounds of 10 s per mode, 10,000 requests per mode. The SDK now also exports `tracing`
@@ -85,6 +85,12 @@ export (4.9); load average 3–5):
   (one slot reached p95 72 ms), so per-request differences are resolved better than in (E): without a database
   query +0.04–0.06 ms at p50 and +0.25–0.34 ms at p95; the 100 KB `GET /api/notes` costs +0.47 ms at p50 with
   bodies on and about the same with the collector unreachable, so that cost is redacting the body, not exporting it.
+
+Measurement run (2026-10-25, same machine, Chromium 156 headless from Playwright 1.64, load average 4–5):
+
+- (G) `pnpm --filter demo-e2e perf` as (D), with packet icons: every hop carries a packet, cycling through
+  HTTP/HTTPS documents with each body kind, a failed call and SQL queries, so icons, the HTTPS badge and labels are
+  all drawn; plus two log or action flashes at nodes every 100 ms (24 on screen at once).
 
 ## Test strategy
 

@@ -290,10 +290,15 @@ async fn events_stream_reports_new_nodes_edges_and_requests() {
         "{request}"
     );
     // Browser fetch 30 ms around a 26 ms server span: 2 ms network each way, then the query 3 ms into the server span.
+    // Each hop says what travelled (packet icons).
     assert!(
         request.contains(concat!(
-            r#""hops":[{"edge":"svc:demo-web->svc:demo-api","start_offset_ms":0.0,"duration_ms":30.0},"#,
-            r#"{"edge":"svc:demo-api->db:postgresql:db:5432/demo","start_offset_ms":5.0,"duration_ms":4.0}]"#
+            r#""hops":[{"edge":"svc:demo-web->svc:demo-api","start_offset_ms":0.0,"duration_ms":30.0,"#,
+            r#""packet":{"kind":"http","operation":"GET","request_body":"none","response_body":"none","#,
+            r#""status_code":200,"error":false}},"#,
+            r#"{"edge":"svc:demo-api->db:postgresql:db:5432/demo","start_offset_ms":5.0,"duration_ms":4.0,"#,
+            r#""packet":{"kind":"sql","operation":"SELECT","request_body":"none","response_body":"none","#,
+            r#""status_code":null,"error":false}}]"#
         )),
         "{request}"
     );

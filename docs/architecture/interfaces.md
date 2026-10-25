@@ -155,6 +155,16 @@ touched with its start offset and duration on the request's timeline, used for a
 one per stored span or app/action record, the same shape as an entry of `GET /api/logs`), `resync` (the client fell behind and must fetch
 `/api/graph` again).
 
+Each hop has a `packet` for the map's packet icons, or `null` when its caller span is no longer stored:
+`kind` (`http`, `https`, `sql`), `operation` (HTTP method or SQL operation in upper case, `null` if unknown or not one
+short word), `request_body` and `response_body` (`none`, `json`, `form`, `text`, `binary`), `status_code` and `error`.
+The collector takes each value from the hop's caller span and falls back to the callee's server span: the scheme
+from `url.scheme` or `url.full`; body kinds from the `content-type` header attributes (`+json` counts as JSON,
+`multipart/form-data` as form, `text/*` as text, other types with bytes as binary), and size `0` means no body; the
+SQL operation from `db.operation.name`, else the first word of `db.query.text`. `error` follows the edge rule (caller
+or callee failed). SQL packets have no body kinds or status. The UI draws the request icon out, waits at the callee
+and draws the response icon back; log records and user actions from SSE `log` flash at their `nodes`.
+
 Log entries have nullable `trace_id`, `span_id`, `level`, `duration_ms` and `record`. For app/action logs, duration
 is absent and `record` contains `body` (redacted text), typed `attributes` and `truncated`; span lines have no record.
 The inspector shows uncorrelated logs directly. Correlated logs can open their retained request; a missing request

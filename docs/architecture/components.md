@@ -79,6 +79,11 @@ Layers follow the global import groups; arrows show allowed imports.
   in and receives selection events out. `ui/src/map/`: `layoutGraph` (deterministic columns), `geometry` (camera,
   curves, hit-testing), `graphState` (snapshot + events), `MapRenderer` (canvas drawing and input); only the
   renderer touches the canvas, so the rest is unit-tested.
+- Packet icons: `requestPulses` places each hop on screen and decides when its request arrives and its response
+  leaves (before and after the calls nested in it); `packets` picks the icon, colour and label for a hop's request and
+  response and for log and action flashes at nodes; `MapRenderer` draws them as `Path2D` strokes. The icon outlines
+  are Lucide path data generated into `ui/src/map/icons/lucideIcons.ts` by `ui/scripts/importLucideIcons.mjs`, not a
+  package dependency (ADR-0013). `MapLegend` explains them with the same path data as React SVG elements.
 - State: the graph snapshot from `GET /api/graph`, then incremental SSE events; a `resync` event triggers a fresh
   snapshot. Events received during a snapshot request are buffered by node/edge id and merged when it completes,
   keeping the higher edge call count so a slow snapshot cannot restore an old error. A newer load, reset or
