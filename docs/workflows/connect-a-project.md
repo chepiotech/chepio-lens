@@ -109,5 +109,6 @@ SQL. `curl -s http://localhost:4320/api/stats` counts what arrived.
 | Nothing at all | The endpoint variable is not set where the app runs, or the collector is not running (`curl http://localhost:4320/healthz`) |
 | Backend and database, no frontend | CORS: the browser console shows `403` for `/v1/traces`; add your origin to `CHEPIO_LENS_CORS_ORIGINS`. Or the frontend runs a production build |
 | Frontend and backend, no arrow between them | `traceparent` is not sent: add `propagateTo` for a cross-origin API and allow the header in the API's CORS |
+| `cargo` cannot fetch `chepio-lens-sdk` (`failed to resolve address`) | Your git config rewrites GitHub URLs to an SSH alias that Cargo's built-in git does not know: build with `CARGO_NET_GIT_FETCH_WITH_CLI=true`, or set `net.git-fetch-with-cli = true` in `~/.cargo/config.toml` |
 | No database node | The backend prints `chepio-lens: database spans are off …`: add `lens.tracing_layer()` to your subscriber and allow `sqlx::query=debug` |
 | A secret in a body or log | Add its key with `CHEPIO_LENS_REDACT_KEYS` (backend) and `redactKeys` (frontend); free-text messages are not masked |
