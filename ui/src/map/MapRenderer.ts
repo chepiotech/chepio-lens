@@ -2,6 +2,7 @@
 import type { EdgeView } from '../api/generated/EdgeView'
 import type { NodeView } from '../api/generated/NodeView'
 // Utils
+import { formatMs } from './formatMs'
 import { type Camera, distanceToCurve, edgeCurve, fitCamera, insideNode, pointOnCurve, toWorld, zoomAt } from './geometry'
 import { NODE_HEIGHT, NODE_WIDTH, type Point, layoutGraph } from './layoutGraph'
 import type { Pulse } from './requestPulses'
@@ -39,6 +40,7 @@ export class MapRenderer {
   private edges: EdgeView[] = []
   private positions = new Map<string, Point>()
   private pulses: ActivePulse[] = []
+  private animatedRequests = 0
   private selection: Selection = null
   private userMoved = false
   private dirty = true
@@ -77,6 +79,8 @@ export class MapRenderer {
 
   /** Animates one request: a dot per hop, timed by `pulsesFor`. */
   pulse(pulses: Pulse[]) {
+    // Exposed on the canvas for the browser end-to-end test: how many requests the map has animated.
+    this.canvas.dataset.animatedRequests = String(++this.animatedRequests)
     const now = performance.now()
     for (const { edgeId, delayMs, durationMs } of pulses) this.pulses.push({ edgeId, start: now + delayMs, durationMs })
     if (this.pulses.length > MAX_PULSES) this.pulses.splice(0, this.pulses.length - MAX_PULSES)
@@ -271,10 +275,6 @@ function subtitle(node: NodeView): string {
     default:
       return node.kind
   }
-}
-
-function formatMs(ms: number): string {
-  return ms >= 100 ? `${Math.round(ms)} ms` : `${ms.toFixed(1)} ms`
 }
 
 /** Cuts `text` with an ellipsis to fit `width` pixels in the current font. */

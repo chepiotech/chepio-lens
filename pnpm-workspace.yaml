@@ -2,3 +2,4 @@ packages:
   - ui
   - sdk/web
   - demo/web
+  - demo/e2e

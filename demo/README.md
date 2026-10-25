@@ -40,6 +40,17 @@ Request bodies are limited to 64 KiB.
 `demo/e2e/backend-db.sh` starts the stack, calls the API and checks that the map shows `demo-api → postgres` with the
 right number of calls within 2 s. `--no-build` skips the image build, `--down` stops the stack afterwards.
 
+With the stack up, the browser test adds a note in the demo and checks that the map shows `demo-web → demo-api →
+postgresql demo` within 2 s and animates the request once (Chromium via Playwright):
+
+```sh
+pnpm --filter demo-e2e exec playwright install chromium   # once
+pnpm --filter demo-e2e e2e
+```
+
+`pnpm --filter demo-e2e perf` measures the map's frame time on a synthetic graph of the target size; it starts the UI
+dev server itself and needs no stack.
+
 ## Run without Docker
 
 ```sh

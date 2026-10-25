@@ -26,12 +26,12 @@ restarts, production use, authentication.
 
 | Attribute | Target | Measured |
 |---|---|---|
-| Request end → visible on the map | p95 ≤ 2 s | 0.25 s, one sample (A) |
+| Request end → visible on the map | p95 ≤ 2 s | Backend → database: 0.25 s, one sample (A). Browser click → whole chain on the map: 0.92–0.94 s, three runs (C) |
 | Collector ingest throughput | ≥ 2,000 spans/s sustained on a laptop, using < 1 CPU core | 2,000 spans/s at 0.01 cores; maximum ≈ 374,000 spans/s at 1.6 cores, batch p99 6 ms (B) |
 | Collector memory at default bounds | RSS ≤ 300 MiB | 60 MiB with the store full by count (10,000 requests of 4 spans, no bodies); 3.4 MiB idle (B). Full by bytes (with bodies) not measured yet |
 | Collector startup | ≤ 1 s | 0.56 s to `/healthz` answering (B) |
 | Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | — |
-| Map rendering | 60 fps with 50 nodes, 100 edges, 200 animated requests | — |
+| Map rendering | 60 fps with 50 nodes, 100 edges, 200 animated requests | 60 fps: 600 frames in 10 s, none late; draw p50/p95/max 0.6 / 0.8 / 1.0 ms at device pixel ratio 1, 0.6 / 0.7 / 0.8 ms at 2 (JavaScript side; rasterization is not included) (D) |
 | Collector unavailable | Zero errors and no measurable latency change in the app | — |
 
 Measurement runs (2026-10-24, Apple M1 Pro, 10 cores, 16 GiB, macOS 26.6, release builds, everything on one
@@ -43,6 +43,14 @@ machine over loopback):
   --traces-per-batch 50` (maximum) and `-- --seconds 20 --workers 2 --traces-per-batch 25 --rate 2000`. CPU is the
   collector's CPU time divided by wall time; RSS from `ps`.
 
+Measurement runs (2026-10-25, same machine, demo stack in Docker Desktop, Chromium 156 headless from Playwright 1.64):
+
+- (C) `pnpm --filter demo-e2e e2e` (`demo/e2e/tests/frontend-chain.spec.ts`): time from the click on "Add" to the map's
+  text summary showing both edges; the browser's batch includes the fetch instrumentation's 300 ms wait.
+- (D) `pnpm --filter demo-e2e perf` (`ui/perf.html`, `demo/e2e/perf/map-frames.spec.ts`): synthetic graph of 50 nodes
+  and 100 edges, 10 new requests every 100 ms with 2 s on screen (200 at once), 10 s after a 2 s warm-up, viewport
+  1440 × 900. Draw time wraps the renderer's draw call; frame intervals come from `requestAnimationFrame`.
+
 ## Test strategy
 
 | Level | What | Where |
@@ -52,7 +60,7 @@ machine over loopback):
 | Integration | Recorded OTLP fixtures (protobuf and JSON) posted to the ingest handler → expected graph and requests from the UI API; SSE resync | `collector/tests/` |
 | SDK | Spans and payload attributes produced for a test axum app and a mocked `fetch`; app unaffected when the endpoint is unreachable | `sdk/rust/tests/`, `sdk/web` |
 | UI | Layout, event application, selection; renderer logic separated from canvas calls so it is testable | `ui/` (Vitest) |
-| End-to-end | Demo app + collector in compose; a script or Playwright drives the demo; assertions on `/api/graph` and the UI | `demo/` |
+| End-to-end | Demo app + collector in compose: a script drives the API and checks `/api/graph`; Playwright clicks in the demo and checks the map's text summary and that the request is animated once | `demo/e2e/` |
 | Security | Demo login secrets never reach the collector unmasked; an HTML/JS payload in a body renders as text | e2e + collector tests |
 
 ## Performance validation

@@ -7,6 +7,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY ui/package.json ui/
 COPY sdk/web/package.json sdk/web/
 COPY demo/web/package.json demo/web/
+COPY demo/e2e/package.json demo/e2e/
 RUN pnpm install --frozen-lockfile --filter demo-web...
 COPY sdk/web sdk/web
 COPY demo/web demo/web

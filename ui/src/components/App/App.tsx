@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // Components
 import ChepioTechFooter from '../ChepioTechFooter/ChepioTechFooter'
 import DetailsPanel from '../DetailsPanel/DetailsPanel'
+import MapSummary from '../MapSummary/MapSummary'
 import MapView, { type MapHandle } from '../MapView/MapView'
 // Hooks
 import { useLensFeed } from '../../hooks/useLensFeed'
@@ -53,6 +54,7 @@ function App() {
       </header>
       <main className="app__main">
         <MapView ref={mapRef} graph={graph} selection={selection} onSelect={setSelection} />
+        <MapSummary graph={graph} />
         {selection && <DetailsPanel graph={graph} selection={selection} onClose={() => setSelection(null)} />}
       </main>
       <ChepioTechFooter />
