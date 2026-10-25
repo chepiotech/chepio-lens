@@ -54,7 +54,10 @@ services:
     init: true
     environment:
       DEMO_API_URL: http://api:8080
+      # Read by the browser, which runs on the host: the collector's published port, not the compose network name.
+      VITE_CHEPIO_LENS_ENDPOINT: http://localhost:4318
     ports:
       - "127.0.0.1:5173:5173"
     depends_on:
       - api
+      - collector

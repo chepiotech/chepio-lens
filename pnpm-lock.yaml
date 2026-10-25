@@ -32,6 +32,9 @@ importers:
       '@vitejs/plugin-react':
         specifier: ^6.1.2
         version: 6.1.2(vite@8.3.5(@types/node@26.6.5))
+      chepio-lens-web:
+        specifier: workspace:*
+        version: link:../../sdk/web
       happy-dom:
         specifier: ^21.0.4
         version: 21.0.4

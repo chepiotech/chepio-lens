@@ -20,7 +20,7 @@ the main risk: they carry passwords, tokens and personal data (ADR-0004).
   payloads. Production mode (auth, TLS, sampling) is a separate future decision (ADR-0003).
 - **SDKs are off by default.** Without `CHEPIO_LENS_ENDPOINT` (or an empty endpoint in the browser) the SDK is a
   no-op. The Rust SDK is added behind a cargo feature and the web SDK through a dev-only dynamic import, so
-  production builds do not contain it.
+  production builds do not contain it (checked for the demo web by `demo/web/src/main.test.ts`).
 - **CORS on ingest.** Browsers may post spans only from the exact origins in `CHEPIO_LENS_CORS_ORIGINS` (default:
   the demo web on `localhost` and `127.0.0.1`); there is no wildcard. Any other `Origin` gets `403` before the body
   is read, so an arbitrary web page open in the developer's browser cannot inject spans into the map.

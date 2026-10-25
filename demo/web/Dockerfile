@@ -8,6 +8,7 @@ COPY ui/package.json ui/
 COPY sdk/web/package.json sdk/web/
 COPY demo/web/package.json demo/web/
 RUN pnpm install --frozen-lockfile --filter demo-web...
+COPY sdk/web sdk/web
 COPY demo/web demo/web
 EXPOSE 5173
 CMD ["pnpm", "--filter", "demo-web", "dev", "--host", "0.0.0.0"]

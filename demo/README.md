@@ -1,8 +1,9 @@
 # Demo app
 
 The full-stack app that chepio-lens instruments and its end-to-end tests drive: a React page, a Rust API (axum,
-sqlx) and Postgres. In compose the API is built with the cargo feature `lens` and reports to the collector; built
-without the feature, it has no telemetry.
+sqlx) and Postgres. In compose both report to the collector: the API is built with the cargo feature `lens`, and the
+web page loads the web SDK in development when `VITE_CHEPIO_LENS_ENDPOINT` is set. Without them there is no
+telemetry, and production builds of the web page never contain the SDK.
 
 ## Run
 
@@ -15,7 +16,7 @@ Open http://localhost:5173 for the demo and http://localhost:4320 for its live m
 
 | Service | Host address | Notes |
 |---|---|---|
-| web | `127.0.0.1:5173` | Vite dev server; proxies `/api` to the API, so the browser stays on one origin |
+| web | `127.0.0.1:5173` | Vite dev server; proxies `/api` to the API, so the browser stays on one origin and the API needs no CORS. Its origin is in the collector's default CORS list |
 | api | `127.0.0.1:8080` | Runs migrations on startup |
 | db | `127.0.0.1:55432` | Postgres 17, user `demo`, password `demo`, database `demo` |
 | collector | `127.0.0.1:4318` (OTLP), `127.0.0.1:4320` (map) | chepio-lens, built from `collector/Dockerfile` with the UI embedded |
@@ -57,6 +58,13 @@ The API reports to a collector when built with the cargo feature `lens` and `CHE
 cargo run -p chepio-lens-collector &
 CHEPIO_LENS_ENDPOINT=http://localhost:4318 DATABASE_URL=postgres://demo:demo@127.0.0.1:55432/demo \
   cargo run -p demo-api --features lens
+```
+
+The web page reports when the dev server gets `VITE_CHEPIO_LENS_ENDPOINT` (`src/main.tsx` imports the SDK only in
+development; `src/main.test.ts` checks that production builds leave it out):
+
+```sh
+VITE_CHEPIO_LENS_ENDPOINT=http://localhost:4318 pnpm --filter demo-web dev
 ```
 
 Then `curl http://localhost:4320/api/graph` shows `demo-api` and its database.
