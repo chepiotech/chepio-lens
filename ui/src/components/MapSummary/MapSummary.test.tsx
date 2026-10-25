@@ -6,6 +6,8 @@ import MapSummary from './MapSummary'
 // Types
 import type { EdgeView } from '../../api/generated/EdgeView'
 import type { NodeView } from '../../api/generated/NodeView'
+// Utils
+import { emptyGraph, graphReducer } from '../../map/graphState'
 
 const node = (id: string, label: string, kind: NodeView['kind']): NodeView => ({
   id,
@@ -26,13 +28,28 @@ const edge = (from: string, to: string, count: number, errors: number, p95_ms: n
   protocol: 'http',
   count,
   errors,
+  last_error: false,
+  last_duration_ms: 0.06,
   p50_ms: p95_ms,
   p95_ms,
   rate_per_s: 0,
+  routes: [],
   last_seen: '0',
 })
 
 describe('MapSummary', () => {
+  it('shows recovery and the latest duration while preserving session history', () => {
+    const failed = { ...edge('svc:web', 'svc:api', 1, 1, 741.4552), last_error: true, last_duration_ms: 700 }
+    let state = graphReducer(emptyGraph, { type: 'edge', edge: failed })
+    expect(renderToString(<MapSummary graph={state} />)).toContain('last call error, 700 ms')
+
+    state = graphReducer(state, { type: 'edge', edge: { ...failed, count: 2, last_error: false, last_duration_ms: 0.06 } })
+    const html = renderToString(<MapSummary graph={state} />)
+    expect(html).toContain('2 calls, 1 errors, p95 741 ms')
+    expect(html).toContain('last call success, 0.06 ms')
+    expect(html).not.toContain('last call error')
+  })
+
   it('lists every node and every edge with its numbers, as text', () => {
     const graph = {
       nodes: {

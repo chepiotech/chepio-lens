@@ -2,7 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 // Domain
-use super::edge::{Edge, EdgeKey, EdgeSnapshot, Protocol};
+use super::edge::{CallOrder, Edge, EdgeKey, EdgeSnapshot, Protocol};
 use super::linker::{Link, LinkTarget};
 use super::node::{DbTarget, ExternalTarget, Node, NodeKind, service_node_id};
 use super::span::{Service, ServiceKind};
@@ -78,7 +78,18 @@ impl Graph {
         self.edges
             .entry(key.clone())
             .or_insert_with(|| Edge::new(key.clone(), now.unix_ns))
-            .record(link.duration_ns, link.error, now.mono_ms, now.unix_ns);
+            .record(
+                &link.route,
+                link.duration_ns,
+                link.error,
+                now.mono_ms,
+                now.unix_ns,
+                CallOrder {
+                    end_ns: link.start_ns.saturating_add(link.duration_ns),
+                    trace_id: link.trace_id,
+                    span_id: link.client_span_id,
+                },
+            );
         changes.edges.insert(key.clone());
         Some(key)
     }

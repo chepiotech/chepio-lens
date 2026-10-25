@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { EdgeView } from '../api/generated/EdgeView'
 import type { NodeView } from '../api/generated/NodeView'
 // Utils
-import { emptyGraph, graphReducer } from './graphState'
+import { emptyGraph, graphReducer, mergeGraphSnapshot } from './graphState'
 
 const api: NodeView = {
   id: 'svc:api',
@@ -24,13 +24,37 @@ const edge = (count: number): EdgeView => ({
   protocol: 'db',
   count,
   errors: 0,
+  last_error: false,
+  last_duration_ms: 0.06,
   p50_ms: 1,
   p95_ms: 2,
   rate_per_s: 0.5,
+  routes: [],
   last_seen: '2',
 })
 
 describe('graphReducer', () => {
+  it('does not restore a snapshot error over success received while it was loading', () => {
+    const failure = { ...edge(1), errors: 1, last_error: true, last_duration_ms: 700 }
+    const success = { ...edge(2), errors: 1 }
+    const graph = mergeGraphSnapshot(
+      { nodes: [api], edges: [failure], generated_at: '3' },
+      { nodes: { [api.id]: { ...api, last_seen: '4' } }, edges: { [success.id]: success } },
+    )
+    expect(graph.edges).toEqual([success])
+    expect(graph.nodes[0]?.last_seen).toBe('4')
+  })
+
+  it('does not overwrite a snapshot that already includes newer calls with earlier buffered events', () => {
+    const latest = { ...edge(3), last_error: true }
+    const graph = mergeGraphSnapshot(
+      { nodes: [api], edges: [latest], generated_at: '3' },
+      { nodes: {}, edges: { [latest.id]: edge(2) } },
+    )
+    expect(graph.edges).toEqual([latest])
+    expect(mergeGraphSnapshot({ nodes: [], edges: [], generated_at: '4' }, emptyGraph).edges).toEqual([])
+  })
+
   it('applies a snapshot, then upserts nodes and edges from events', () => {
     let state = graphReducer(emptyGraph, { type: 'snapshot', graph: { nodes: [api], edges: [edge(1)], generated_at: '3' } })
     state = graphReducer(state, { type: 'edge', edge: edge(2) })

@@ -5,7 +5,8 @@
 use std::collections::{HashMap, VecDeque};
 
 use chepio_lens_conventions::keys::{
-    DB_NAMESPACE, DB_SYSTEM_NAME, SERVER_ADDRESS, SERVER_PORT, URL_FULL,
+    DB_COLLECTION_NAME, DB_NAMESPACE, DB_OPERATION_NAME, DB_SYSTEM_NAME, HTTP_REQUEST_METHOD,
+    HTTP_ROUTE, SERVER_ADDRESS, SERVER_PORT, URL_FULL,
 };
 // Domain
 use super::node::{DbTarget, ExternalTarget};
@@ -31,6 +32,8 @@ pub struct Link {
     /// Duration as the caller saw it (the client span).
     pub duration_ns: u64,
     pub error: bool,
+    /// The callee's route (`GET /api/notes`, `SELECT notes`), for the per-route breakdown of the edge.
+    pub route: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -46,6 +49,8 @@ type Key = (TraceId, SpanId);
 
 struct PendingClient {
     span_id: SpanId,
+    /// Route of the call as the client sees it, used when the call ends at an external node.
+    route: String,
     service: Service,
     start_ns: u64,
     duration_ns: u64,
@@ -56,6 +61,7 @@ struct PendingClient {
 
 struct OrphanServer {
     service: Service,
+    route: String,
     error: bool,
     deadline_ms: u64,
 }
@@ -106,6 +112,7 @@ impl Linker {
     fn on_client(&mut self, span: &Span, now_ms: u64) -> Vec<Link> {
         if let Some(db) = db_target(span) {
             return vec![Link {
+                route: db_route(span),
                 trace_id: span.trace_id,
                 client_span_id: span.span_id,
                 start_ns: span.start_ns,
@@ -119,6 +126,7 @@ impl Linker {
         if let Some(server) = self.orphans.remove(&key) {
             let client = PendingClient {
                 span_id: span.span_id,
+                route: client_route(span),
                 service: span.service.clone(),
                 start_ns: span.start_ns,
                 duration_ns: span.duration_ns(),
@@ -126,9 +134,15 @@ impl Linker {
                 target: ExternalTarget::default(),
                 deadline_ms: 0,
             };
-            return http_link(span.trace_id, client, server.service, server.error)
-                .into_iter()
-                .collect();
+            return http_link(
+                span.trace_id,
+                client,
+                server.service,
+                server.error,
+                server.route,
+            )
+            .into_iter()
+            .collect();
         }
         let mut links = Vec::new();
         if self.pending.len() >= self.limits.max_pending {
@@ -139,6 +153,7 @@ impl Linker {
             key,
             PendingClient {
                 span_id: span.span_id,
+                route: client_route(span),
                 service: span.service.clone(),
                 start_ns: span.start_ns,
                 duration_ns: span.duration_ns(),
@@ -158,9 +173,15 @@ impl Linker {
         };
         let key = (span.trace_id, parent);
         if let Some(client) = self.pending.remove(&key) {
-            return http_link(span.trace_id, client, span.service.clone(), span.is_error())
-                .into_iter()
-                .collect();
+            return http_link(
+                span.trace_id,
+                client,
+                span.service.clone(),
+                span.is_error(),
+                server_route(span),
+            )
+            .into_iter()
+            .collect();
         }
         if self.orphans.len() >= self.limits.max_orphans {
             self.evict_oldest_orphan();
@@ -170,6 +191,7 @@ impl Linker {
             key,
             OrphanServer {
                 service: span.service.clone(),
+                route: server_route(span),
                 error: span.is_error(),
                 deadline_ms,
             },
@@ -264,8 +286,10 @@ fn http_link(
     client: PendingClient,
     server: Service,
     server_error: bool,
+    route: String,
 ) -> Option<Link> {
     (client.service.name != server.name).then_some(Link {
+        route,
         trace_id,
         client_span_id: client.span_id,
         start_ns: client.start_ns,
@@ -278,6 +302,7 @@ fn http_link(
 
 fn external_link(trace_id: TraceId, client: PendingClient) -> Link {
     Link {
+        route: client.route.clone(),
         trace_id,
         client_span_id: client.span_id,
         start_ns: client.start_ns,
@@ -293,7 +318,43 @@ fn port(span: &Span) -> Option<u16> {
         .and_then(|port| u16::try_from(port).ok())
 }
 
-fn db_target(span: &Span) -> Option<DbTarget> {
+/// `<method> <route>` of a server span, else its name.
+fn server_route(span: &Span) -> String {
+    match (
+        span.attr_str(HTTP_REQUEST_METHOD),
+        span.attr_str(HTTP_ROUTE),
+    ) {
+        (Some(method), Some(route)) => format!("{method} {route}"),
+        _ => span.name.clone(),
+    }
+}
+
+/// `<method> <path>` of a client call, else its name.
+fn client_route(span: &Span) -> String {
+    let path = span.attr_str(URL_FULL).and_then(|url| {
+        let (_, rest) = url.split_once("://")?;
+        let path = &rest[rest.find('/')?..];
+        Some(path.split(['?', '#']).next().unwrap_or(path))
+    });
+    match (span.attr_str(HTTP_REQUEST_METHOD), path) {
+        (Some(method), Some(path)) => format!("{method} {path}"),
+        _ => span.name.clone(),
+    }
+}
+
+/// `<operation> <collection>` of a query, else its name.
+fn db_route(span: &Span) -> String {
+    match (
+        span.attr_str(DB_OPERATION_NAME),
+        span.attr_str(DB_COLLECTION_NAME),
+    ) {
+        (Some(operation), Some(collection)) => format!("{operation} {collection}"),
+        (Some(operation), None) => operation.to_owned(),
+        _ => span.name.clone(),
+    }
+}
+
+pub(crate) fn db_target(span: &Span) -> Option<DbTarget> {
     let system = span.attr_str(DB_SYSTEM_NAME)?;
     Some(DbTarget {
         system: system.to_owned(),
@@ -377,6 +438,7 @@ pub(crate) mod tests {
                 .map(|(key, value)| ((*key).to_owned(), value.clone()))
                 .collect::<Attributes>(),
             truncated_attributes: Vec::new(),
+            events: Vec::new(),
         }
     }
 

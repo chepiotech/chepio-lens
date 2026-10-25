@@ -4,7 +4,10 @@ use std::sync::atomic::Ordering;
 
 // Domain
 use crate::domain::edge::EdgeSnapshot;
+use crate::domain::log::{LogPage, LogQuery};
 use crate::domain::node::Node;
+use crate::domain::request::RequestDetail;
+use crate::domain::span::TraceId;
 use crate::domain::time::Now;
 // Ports
 use crate::ports::{EventFeed, EventStream};
@@ -38,6 +41,14 @@ impl Query {
         }
     }
 
+    pub fn logs(&self, query: &LogQuery) -> LogPage {
+        self.shared.lock().store.logs(query)
+    }
+
+    pub fn request(&self, trace_id: &TraceId) -> Option<RequestDetail> {
+        self.shared.lock().store.detail(trace_id)
+    }
+
     pub fn subscribe(&self) -> EventStream {
         self.feed.subscribe()
     }
@@ -56,6 +67,7 @@ impl Query {
             requests_stored: store.requests,
             requests_evicted: store.evicted_requests,
             store_bytes: store.bytes,
+            log_entries: store.log_entries,
             pending_links: state.linker.pending_count(),
             nodes: graph.nodes,
             edges: graph.edges,

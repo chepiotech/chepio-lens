@@ -28,6 +28,7 @@ function MapSummary({ graph }: Props) {
         {edges.map(({ edge, text }) => (
           <li key={edge.id}>
             {`${text}: ${edge.count} ${edge.count === 1 ? 'call' : 'calls'}, ${edge.errors} errors, p95 ${formatMs(edge.p95_ms)}`}
+            {`; last call ${edge.last_error ? 'error' : 'success'}, ${formatMs(edge.last_duration_ms)}`}
           </li>
         ))}
       </ul>

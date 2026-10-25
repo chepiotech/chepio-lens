@@ -9,8 +9,9 @@ Status: design (2026-10-23). Numbers are starting defaults to be validated by th
    SDK's server span ends when the response body has been sent (or dropped), with the captured bodies attached.
 2. The SDK batch processor exports every 500 ms (OpenTelemetry's default is 5 s, too slow for a live map) or when
    512 spans are queued.
-3. `POST /v1/traces` → body limit → decode (protobuf or JSON) → normalize names → redact → store → link and
-   update graph → publish SSE events → respond `200`. All in one handler; no internal queue.
+3. `POST /v1/traces` → body limit → decode (protobuf or JSON) → normalize names → redact → store (and add one log
+   line per stored span) → link and update graph → publish SSE events (`node`, `edge`, `request`, `log`) → respond
+   `200`. All in one handler; no internal queue.
 4. The UI applies `node` and `edge` events on the next animation frame, so counters update at once. A request's
    spans come from several processes in separate batches, each producing a `request` event; the UI animates the
    request once, 300 ms after its last event when its root span has arrived (`has_root`), else 1.2 s after it.
@@ -41,7 +42,11 @@ Every buffer is bounded; on overflow the oldest entry is dropped and ingest is n
 | Concurrent ingest requests | 64 | `503` + `Retry-After: 1` |
 | Stored requests | 10,000 and 256 MiB of span data | Evict the oldest request |
 | Spans per request | 1,000 | Drop further spans, count them in `dropped_spans` |
-| Attribute value length (collector side) | 256 KiB | Cut, mark as truncated |
+| Events per span | 32 | Drop further events, add `events` to the span's truncated keys |
+| Log entries | 50,000 | Drop the oldest by time |
+| Routes per edge | 16 | Count further calls under `(other routes)` |
+| `GET /api/logs` page | 100 by default, at most 500 | Clamp `limit` |
+| Attribute value length (collector side) | 256 KiB | Cut, mark as truncated on the span or event; HTTP bodies cut here are masked whole (`security.md`) |
 | Pending client spans | 10,000 | Oldest is attributed to its external node now |
 | Server spans waiting for their client parent | 10,000 | Drop the oldest |
 | Nodes / edges | 1,000 / 5,000 | Ignore new ones, log a warning once per minute |

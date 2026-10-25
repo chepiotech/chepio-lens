@@ -6,29 +6,72 @@ use chepio_lens_conventions::keys::{
     HTTP_REQUEST_HEADER_PREFIX, HTTP_RESPONSE_HEADER_PREFIX, LENS_HTTP_REQUEST_BODY,
     LENS_HTTP_RESPONSE_BODY, LENS_REDACTION_COUNT, URL_FULL, URL_QUERY,
 };
-use chepio_lens_conventions::redaction::{Redacted, Redactor};
+use chepio_lens_conventions::redaction::{REDACTED, Redacted, Redactor};
 // Domain
-use crate::domain::span::{AttrValue, Span};
+use crate::domain::span::{AttrValue, Attributes, Span};
 
 const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
 
-/// Masks headers, URL query parameters and bodies in place; adds what it masked to `lens.redaction.count`.
+/// Masks headers, URL query parameters and bodies in place, in the span's attributes and in its events' attributes;
+/// adds what it masked to `lens.redaction.count`.
 pub(crate) fn redact_span(span: &mut Span, redactor: &Redactor) -> usize {
-    let is_form = |prefix: &str, span: &Span| {
+    let forms = form_content_types(&span.attributes, (false, false));
+
+    let mut count = redact_attributes(
+        &mut span.attributes,
+        &span.truncated_attributes,
+        redactor,
+        forms,
+    );
+    for event in &mut span.events {
+        let event_forms = form_content_types(&event.attributes, forms);
+        count += redact_attributes(
+            &mut event.attributes,
+            &event.truncated_attributes,
+            redactor,
+            event_forms,
+        );
+    }
+    if count > 0 {
+        let previous = span.attr_i64(LENS_REDACTION_COUNT).unwrap_or(0);
+        span.attributes.insert(
+            LENS_REDACTION_COUNT.to_owned(),
+            AttrValue::Int(previous + i64::try_from(count).unwrap_or(i64::MAX)),
+        );
+    }
+    count
+}
+
+/// An event can describe its own request/response; missing content types inherit the containing span's choice.
+fn form_content_types(attributes: &Attributes, fallback: (bool, bool)) -> (bool, bool) {
+    let is_form = |prefix: &str, fallback: bool| {
         let key = format!("{prefix}content-type");
-        let value = span.attributes.get(&key);
-        let text = match value {
+        let text = match attributes.get(&key) {
             Some(AttrValue::Str(text)) => Some(text.as_str()),
             Some(AttrValue::Array(items)) => items.first().and_then(AttrValue::as_str),
             _ => None,
         };
-        text.is_some_and(|text| text.to_ascii_lowercase().contains(FORM_CONTENT_TYPE))
+        text.map_or(fallback, |text| {
+            text.split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case(FORM_CONTENT_TYPE))
+        })
     };
-    let request_form = is_form(HTTP_REQUEST_HEADER_PREFIX, span);
-    let response_form = is_form(HTTP_RESPONSE_HEADER_PREFIX, span);
+    (
+        is_form(HTTP_REQUEST_HEADER_PREFIX, fallback.0),
+        is_form(HTTP_RESPONSE_HEADER_PREFIX, fallback.1),
+    )
+}
 
+/// `(request_form, response_form)`: whether the attributes' request and response bodies are forms, by content type.
+fn redact_attributes(
+    attributes: &mut Attributes,
+    truncated_attributes: &[String],
+    redactor: &Redactor,
+    (request_form, response_form): (bool, bool),
+) -> usize {
     let mut count = 0;
-    for (key, value) in span.attributes.iter_mut() {
+    for (key, value) in attributes.iter_mut() {
         let header = key
             .strip_prefix(HTTP_REQUEST_HEADER_PREFIX)
             .or_else(|| key.strip_prefix(HTTP_RESPONSE_HEADER_PREFIX));
@@ -36,6 +79,16 @@ pub(crate) fn redact_span(span: &mut Span, redactor: &Redactor) -> usize {
             (Some(name), _) => map_strings(value, &|text| redactor.redact_header(name, text)),
             (None, URL_FULL) => map_strings(value, &|text| redactor.redact_url(text)),
             (None, URL_QUERY) => map_strings(value, &|text| redactor.redact_form(text)),
+            // The decoder may have cut valid JSON into an unparseable prefix containing secrets. A body cut by
+            // the collector cannot be masked reliably by key, so hide it whole and keep the truncation marker.
+            (None, LENS_HTTP_REQUEST_BODY | LENS_HTTP_RESPONSE_BODY)
+                if truncated_attributes.contains(key) =>
+            {
+                map_strings(value, &|text| Redacted {
+                    text: REDACTED.to_owned(),
+                    count: usize::from(text != REDACTED),
+                })
+            }
             (None, LENS_HTTP_REQUEST_BODY) => {
                 map_strings(value, &|text| redact_body(redactor, text, request_form))
             }
@@ -44,13 +97,6 @@ pub(crate) fn redact_span(span: &mut Span, redactor: &Redactor) -> usize {
             }
             _ => 0,
         };
-    }
-    if count > 0 {
-        let previous = span.attr_i64(LENS_REDACTION_COUNT).unwrap_or(0);
-        span.attributes.insert(
-            LENS_REDACTION_COUNT.to_owned(),
-            AttrValue::Int(previous + i64::try_from(count).unwrap_or(i64::MAX)),
-        );
     }
     count
 }
@@ -85,7 +131,7 @@ mod tests {
     // Core
     use super::*;
     use crate::domain::linker::tests::span;
-    use crate::domain::span::SpanKind;
+    use crate::domain::span::{SpanEvent, SpanKind};
 
     #[test]
     fn headers_urls_and_bodies_are_masked_and_counted() {
@@ -149,6 +195,48 @@ mod tests {
     }
 
     #[test]
+    fn event_attributes_are_masked_with_the_same_rules() {
+        let mut span = span("web", SpanKind::Client, 1, None, &[]);
+        span.events.push(SpanEvent {
+            name: "retry".into(),
+            time_ns: 1,
+            truncated_attributes: Vec::new(),
+            attributes: [
+                (
+                    URL_FULL.to_owned(),
+                    AttrValue::Str("http://api/login?token=abc".into()),
+                ),
+                (
+                    "http.request.header.authorization".to_owned(),
+                    AttrValue::Array(vec![AttrValue::Str("Bearer x".into())]),
+                ),
+                (
+                    LENS_HTTP_REQUEST_BODY.to_owned(),
+                    AttrValue::Str(r#"{"password":"demo-password"}"#.into()),
+                ),
+            ]
+            .into(),
+        });
+
+        assert_eq!(redact_span(&mut span, &Redactor::default()), 3);
+
+        let event = &span.events[0].attributes;
+        assert_eq!(
+            event[URL_FULL],
+            AttrValue::Str("http://api/login?token=[REDACTED]".into())
+        );
+        assert_eq!(
+            event["http.request.header.authorization"],
+            AttrValue::Array(vec![AttrValue::Str("[REDACTED]".into())])
+        );
+        assert_eq!(
+            event[LENS_HTTP_REQUEST_BODY],
+            AttrValue::Str(r#"{"password":"[REDACTED]"}"#.into())
+        );
+        assert_eq!(span.attr_i64(LENS_REDACTION_COUNT), Some(3));
+    }
+
+    #[test]
     fn form_bodies_are_masked_only_with_a_form_content_type() {
         let body = "user=demo&password=secret";
         let mut form = span(
@@ -180,5 +268,59 @@ mod tests {
         );
         assert_eq!(text.attr_str(LENS_HTTP_REQUEST_BODY), Some(body));
         assert!(!text.attributes.contains_key(LENS_REDACTION_COUNT));
+    }
+
+    #[test]
+    fn event_content_types_override_or_inherit_the_spans_content_types() {
+        let body = "user=demo&password=fake-secret";
+        for (span_type, event_type, masked) in [
+            ("text/plain", Some(FORM_CONTENT_TYPE), true),
+            (FORM_CONTENT_TYPE, Some("text/plain"), false),
+            (FORM_CONTENT_TYPE, None, true),
+        ] {
+            let mut span = span("api", SpanKind::Server, 1, None, &[]);
+            let mut attributes = Attributes::new();
+            for (prefix, body_key) in [
+                (HTTP_REQUEST_HEADER_PREFIX, LENS_HTTP_REQUEST_BODY),
+                (HTTP_RESPONSE_HEADER_PREFIX, LENS_HTTP_RESPONSE_BODY),
+            ] {
+                let key = format!("{prefix}content-type");
+                span.attributes
+                    .insert(key.clone(), AttrValue::Str(span_type.into()));
+                if let Some(content_type) = event_type {
+                    attributes.insert(
+                        key,
+                        AttrValue::Array(vec![AttrValue::Str(content_type.into())]),
+                    );
+                }
+                attributes.insert(body_key.into(), AttrValue::Str(body.into()));
+            }
+            span.events.push(SpanEvent {
+                name: "retry".into(),
+                time_ns: 1,
+                attributes,
+                truncated_attributes: Vec::new(),
+            });
+
+            assert_eq!(
+                redact_span(&mut span, &Redactor::default()),
+                if masked { 2 } else { 0 }
+            );
+
+            for key in [LENS_HTTP_REQUEST_BODY, LENS_HTTP_RESPONSE_BODY] {
+                assert_eq!(
+                    span.events[0].attributes[key],
+                    AttrValue::Str(
+                        if masked {
+                            "user=demo&password=[REDACTED]"
+                        } else {
+                            body
+                        }
+                        .into()
+                    ),
+                    "{span_type:?}, {event_type:?}"
+                );
+            }
+        }
     }
 }

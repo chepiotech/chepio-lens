@@ -1,6 +1,6 @@
 # Data
 
-Status: collector model implemented (2026-10-24). The collector has no database: everything lives in a bounded
+Status: collector model implemented, with span events, the log and per-route edge counters (2026-10-25). The collector has no database: everything lives in a bounded
 in-memory store and is lost on restart (ADR-0005). Bounds and eviction numbers are in `runtime.md`; identity and derivation rules are in
 `../domain/invariants.md`.
 
@@ -8,24 +8,29 @@ in-memory store and is lost on restart (ADR-0005). Bounds and eviction numbers a
 
 ```
 Request (one trace) 1 ──── * Span ──── * Attribute
-                                │
-                    derives     ▼
-Node * ──── Edge ──── * Node        (graph, aggregated over all requests)
+                                │  └──── * Event ──── * Attribute
+                    derives     ├──────▶ Log entry (one line per stored span)
+                                ▼
+Node * ──── Edge ──── * Node        (graph, aggregated over all requests; Edge 1 ── * Route stats)
 ```
 
 | Entity | Key | Fields | Notes |
 |---|---|---|---|
-| Span | `trace_id` (16 bytes) + `span_id` (8 bytes) | `parent_span_id`, `service`, `kind` (server, client, internal, producer, consumer), `name`, `start_ns`, `end_ns`, `status` (unset, ok, error + message), normalized attributes, raw attributes, events | Normalized at ingest: legacy semconv names mapped to stable ones, values redacted. Raw attributes and events are not kept yet |
-| Request | `trace_id` | root span, method, route, status code, duration, services touched, error flag, span count | Summary of a trace, updated as spans arrive |
+| Span | `trace_id` (16 bytes) + `span_id` (8 bytes) | `parent_span_id`, `service`, `kind` (server, client, internal, producer, consumer), `name`, `start_ns`, `end_ns`, `status` (unset, ok, error + message), normalized attributes, truncated attribute keys, events (name, time, normalized attributes, their own truncated attribute keys) | Normalized at ingest: legacy semconv names mapped to stable ones, values redacted. At most 32 events per span; when more arrive, `events` is added to the truncated keys. Raw (pre-normalization) attributes are not kept |
+| Request | `trace_id` | root span, method, route, status code, duration, services touched, error flag, span count, `has_root`, hops (edge, offset, duration) | Summary of a trace, updated as spans arrive; the detail adds every span (`GET /api/requests/{trace_id}`) |
+| Log entry | (`time_ns`, `seq`); `seq` is the arrival number | trace and span ids, parent span id, duration, layer, kind, service, node ids, one-line text (at most 300 characters), status code, error flag | One per stored span, built at ingest from already-redacted values. Layer: `database` for a client span with `db.system.name`, `frontend` for spans of a frontend node, `backend` otherwise. Kind: `query` (database), `request` (server span, or a browser fetch), `call` (backend client span to another service or host), `span` (anything else). Text: SQL on one line for queries, `<method> <url without scheme>` for client calls, the span name otherwise |
 | Node | stable string id (see invariants) | `kind` (frontend, service, database, external), label, details (database system, address, namespace), `first_seen`, `last_seen` | Created on first span that implies it |
-| Edge | (`from`, `to`, `protocol`) | `protocol` (http, db), totals (count, errors), latency summary (p50, p95), rate over the last 60 s, `last_seen`, per-route or per-operation breakdown (not built yet) | Updated incrementally on every linked span. p50/p95 come from a fixed log-scale histogram (4 buckets per doubling, at most ~19% above the true value); the rate from 60 one-second slots |
+| Edge | (`from`, `to`, `protocol`) | `protocol` (http, db), latest call result and exact caller duration, totals (count, errors), latency summary (p50, p95), rate over the last 60 s, `last_seen`, route stats | Updated incrementally on every linked span. Latest call is ordered by caller completion timestamp, then trace/span ids, independently of arrival order. p50/p95 come from a fixed log-scale histogram (4 buckets per doubling, at most ~19% above the true value); the rate from 60 one-second slots |
+| Route stats | edge + route label | count, errors, mean and max duration | The callee's route: `<method> <http.route>` of the server span (else its name), `<db.operation.name> <db.collection.name>` of a query (else its name), `<method> <path>` of a call to an external node. At most 16 routes per edge; further calls are counted under `(other routes)`. No histogram, to keep edges small |
 
 ## Storage
 
 - Requests and their spans: a ring buffer bounded by request count and by total bytes; the oldest request is evicted
   first.
+- Log: entries ordered by time, then arrival, bounded by count; the oldest by time is dropped. Independent of request
+  eviction, so a line can outlive its request (the inspector then answers `404`).
 - Graph (nodes and edges): kept for the collector's lifetime, independent of request eviction, bounded by node and
-  edge count. `POST /api/reset` clears both the graph and the requests.
+  edge count. `POST /api/reset` clears the graph, the requests and the log.
 - Pending client spans waiting for their server-side child: a bounded map with a time limit (link window).
 - Nothing is written to disk. Payload values never appear in logs.
 
@@ -39,5 +44,5 @@ Node * ──── Edge ──── * Node        (graph, aggregated over all 
 
 ## Retention
 
-Session-only. A request disappears when it is evicted by the bounds or when the collector restarts. The graph
-disappears on restart or reset. Persistence across restarts is out of scope for the MVP (ADR-0005).
+Session-only. A request disappears when it is evicted by the bounds or when the collector restarts; a log line when
+the log's bound drops it. The graph disappears on restart or reset. Persistence across restarts is out of scope for the MVP (ADR-0005).

@@ -3,6 +3,8 @@ import type { GraphState } from '../../map/graphState'
 import type { Selection } from '../../map/MapRenderer'
 // Styles
 import './DetailsPanel.css'
+// Utils
+import { formatMs } from '../../map/formatMs'
 
 type Props = {
   graph: GraphState
@@ -57,10 +59,12 @@ function edgeRows(graph: GraphState, id: string): Rows | null {
     title: `${label(edge.from)} → ${label(edge.to)}`,
     items: [
       ['Protocol', edge.protocol],
-      ['Calls', String(edge.count)],
-      ['Errors', String(edge.errors)],
-      ['p50', `${edge.p50_ms.toFixed(1)} ms`],
-      ['p95', `${edge.p95_ms.toFixed(1)} ms`],
+      ['Last call', edge.last_error ? 'Error' : 'Success'],
+      ['Last duration', formatMs(edge.last_duration_ms)],
+      ['Calls this session', String(edge.count)],
+      ['Errors this session', String(edge.errors)],
+      ['Session p50 (approx.)', formatMs(edge.p50_ms)],
+      ['Session p95 (approx.)', formatMs(edge.p95_ms)],
       ['Rate', `${edge.rate_per_s.toFixed(2)} /s over 60 s`],
     ],
   }

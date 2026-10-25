@@ -25,9 +25,12 @@ const edge = (from: string, to: string, protocol: EdgeView['protocol'] = 'http')
   protocol,
   count: 1,
   errors: 0,
+  last_error: false,
+  last_duration_ms: 0.06,
   p50_ms: 1,
   p95_ms: 1,
   rate_per_s: 0,
+  routes: [],
   last_seen: '0',
 })
 

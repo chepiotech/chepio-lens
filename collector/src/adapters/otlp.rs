@@ -16,12 +16,14 @@ use opentelemetry_proto::tonic::trace::v1::status::StatusCode;
 use prost::Message;
 // Domain
 use crate::domain::span::{
-    AttrValue, Attributes, Service, Span, SpanId, SpanKind, Status, TraceId,
+    AttrValue, Attributes, Service, Span, SpanEvent, SpanId, SpanKind, Status, TraceId,
 };
 // Ports
 use crate::ports::{DecodedBatch, OtlpCodec};
 // Types
 use crate::types::OtlpEncoding;
+// Consts
+use crate::consts::MAX_EVENTS_PER_SPAN;
 
 pub struct ProtoCodec {
     max_attribute_bytes: usize,
@@ -63,7 +65,25 @@ impl ProtoCodec {
                         batch.rejected += 1;
                         continue;
                     };
-                    let (attributes, truncated_attributes) = self.normalize(span.attributes);
+                    let (attributes, mut truncated_attributes) = self.normalize(span.attributes);
+                    if span.events.len() > MAX_EVENTS_PER_SPAN {
+                        truncated_attributes.push("events".to_owned());
+                    }
+                    let events = span
+                        .events
+                        .into_iter()
+                        .take(MAX_EVENTS_PER_SPAN)
+                        .map(|event| {
+                            let (attributes, truncated_attributes) =
+                                self.normalize(event.attributes);
+                            SpanEvent {
+                                name: event.name,
+                                time_ns: event.time_unix_nano,
+                                attributes,
+                                truncated_attributes,
+                            }
+                        })
+                        .collect();
                     batch.spans.push(Span {
                         trace_id,
                         span_id,
@@ -76,6 +96,7 @@ impl ProtoCodec {
                         status: status(span.status),
                         attributes,
                         truncated_attributes,
+                        events,
                     });
                 }
             }
@@ -272,6 +293,40 @@ mod tests {
         );
         assert_eq!(db.parent_span_id, Some(span.span_id));
         assert!(matches!(db.status, Status::Error { .. }));
+    }
+
+    #[test]
+    fn span_events_are_kept_up_to_the_bound_with_normalized_attributes() {
+        let mut request: ExportTraceServiceRequest = serde_json::from_str(JSON).unwrap();
+        let span = &mut request.resource_spans[0].scope_spans[0].spans[0];
+        span.events = (0..MAX_EVENTS_PER_SPAN + 3)
+            .map(|i| opentelemetry_proto::tonic::trace::v1::span::Event {
+                time_unix_nano: 1_000 + i as u64,
+                name: format!("event {i}"),
+                attributes: vec![KeyValue {
+                    key: "http.method".into(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("GET".into())),
+                    }),
+                    ..KeyValue::default()
+                }],
+                ..Default::default()
+            })
+            .collect();
+
+        let batch = ProtoCodec::new(1024)
+            .decode(OtlpEncoding::Protobuf, &request.encode_to_vec())
+            .unwrap();
+
+        let span = &batch.spans[0];
+        assert_eq!(span.events.len(), MAX_EVENTS_PER_SPAN);
+        assert_eq!(span.events[0].name, "event 0");
+        assert_eq!(span.events[0].time_ns, 1_000);
+        assert_eq!(
+            span.events[0].attributes.get(HTTP_REQUEST_METHOD),
+            Some(&AttrValue::Str("GET".into()))
+        );
+        assert!(span.truncated_attributes.contains(&"events".to_owned()));
     }
 
     #[test]
