@@ -72,16 +72,26 @@ pub enum Status {
     Error { message: String },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(untagged)]
 pub enum AttrValue {
     Str(String),
     Bool(bool),
     Int(i64),
     Double(f64),
     Array(Vec<AttrValue>),
+    Map(BTreeMap<String, AttrValue>),
 }
 
 impl AttrValue {
+    /// Structured values remain structured until after masking; text is safe for text-only UI rendering.
+    pub fn text(&self) -> String {
+        match self {
+            Self::Str(text) => text.clone(),
+            _ => serde_json::to_string(self).unwrap_or_default(),
+        }
+    }
+
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Self::Str(value) => Some(value),
@@ -100,7 +110,20 @@ impl AttrValue {
     pub fn approx_size(&self) -> usize {
         match self {
             Self::Str(value) => value.len(),
-            Self::Array(items) => items.iter().map(Self::approx_size).sum::<usize>() + 8,
+            Self::Array(items) => {
+                items
+                    .iter()
+                    .map(|item| item.approx_size() + 32)
+                    .sum::<usize>()
+                    + 24
+            }
+            Self::Map(items) => {
+                items
+                    .iter()
+                    .map(|(key, value)| key.len() + value.approx_size() + 64)
+                    .sum::<usize>()
+                    + 24
+            }
             _ => 8,
         }
     }

@@ -8,6 +8,7 @@ use ts_rs::TS;
 // Domain
 use crate::domain::edge::{EdgeSnapshot, Protocol};
 use crate::domain::log::{Layer, LogCursor, LogEntry, LogKind};
+use crate::domain::log_record::LogLevel;
 use crate::domain::node::{Node, NodeKind};
 use crate::domain::request::{RequestDetail, RequestSummary};
 use crate::domain::span::{AttrValue, Attributes, Span, SpanKind, Status};
@@ -167,6 +168,13 @@ pub struct StatsView {
     pub requests_evicted: u64,
     pub store_bytes: usize,
     pub log_entries: usize,
+    pub log_bytes: usize,
+    #[ts(type = "number")]
+    pub logs_received: u64,
+    #[ts(type = "number")]
+    pub logs_rejected: u64,
+    #[ts(type = "number")]
+    pub logs_evicted: u64,
     pub pending_links: usize,
     pub nodes: usize,
     pub edges: usize,
@@ -213,6 +221,41 @@ pub enum LogKindView {
     Query,
     Call,
     Span,
+    Log,
+    Action,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum LogLevelView {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Fatal,
+}
+
+impl From<LogLevel> for LogLevelView {
+    fn from(level: LogLevel) -> Self {
+        match level {
+            LogLevel::Trace => Self::Trace,
+            LogLevel::Debug => Self::Debug,
+            LogLevel::Info => Self::Info,
+            LogLevel::Warn => Self::Warn,
+            LogLevel::Error => Self::Error,
+            LogLevel::Fatal => Self::Fatal,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct LogRecordView {
+    pub body: String,
+    pub attributes: Vec<AttributeView>,
+    pub truncated: bool,
 }
 
 /// A log cursor as text: `<time_ns>.<seq>`.
@@ -234,10 +277,10 @@ pub fn parse_cursor(text: &str) -> Option<LogCursor> {
 pub struct LogEntryView {
     /// Position in the log; `GET /api/logs?before=<id>` continues with older lines.
     pub id: String,
-    pub trace_id: String,
-    pub span_id: String,
+    pub trace_id: Option<String>,
+    pub span_id: Option<String>,
     pub time: String,
-    pub duration_ms: f64,
+    pub duration_ms: Option<f64>,
     pub layer: LayerView,
     pub kind: LogKindView,
     pub service: String,
@@ -246,28 +289,38 @@ pub struct LogEntryView {
     pub text: String,
     pub status_code: Option<u16>,
     pub error: bool,
+    pub level: Option<LogLevelView>,
+    pub record: Option<LogRecordView>,
 }
 
 impl From<&LogEntry> for LogEntryView {
     fn from(entry: &LogEntry) -> Self {
         Self {
             id: cursor_text(entry.cursor()),
-            trace_id: entry.trace_id.to_string(),
-            span_id: entry.span_id.to_string(),
+            trace_id: entry.trace_id.map(|id| id.to_string()),
+            span_id: entry.span_id.map(|id| id.to_string()),
             time: entry.time_ns.to_string(),
-            duration_ms: ms(entry.duration_ns),
+            duration_ms: entry.record.is_none().then(|| ms(entry.duration_ns)),
             layer: entry.layer.into(),
             kind: match entry.kind {
                 LogKind::Request => LogKindView::Request,
                 LogKind::Query => LogKindView::Query,
                 LogKind::Call => LogKindView::Call,
                 LogKind::Span => LogKindView::Span,
+                LogKind::Log => LogKindView::Log,
+                LogKind::Action => LogKindView::Action,
             },
             service: entry.service.clone(),
             nodes: entry.nodes.clone(),
             text: entry.text.clone(),
             status_code: entry.status_code,
             error: entry.error,
+            level: entry.level.map(LogLevelView::from),
+            record: entry.record.as_ref().map(|record| LogRecordView {
+                body: record.body.text(),
+                attributes: attribute_views(&record.attributes),
+                truncated: record.truncated,
+            }),
         }
     }
 }
@@ -290,6 +343,7 @@ pub enum AttrKindView {
     Int,
     Double,
     Array,
+    Map,
 }
 
 /// An attribute as text: one value, or one per array item (e.g. repeated headers).
@@ -308,6 +362,7 @@ fn scalar_text(value: &AttrValue) -> String {
         AttrValue::Int(number) => number.to_string(),
         AttrValue::Double(number) => number.to_string(),
         AttrValue::Array(items) => items.iter().map(scalar_text).collect::<Vec<_>>().join(", "),
+        AttrValue::Map(_) => value.text(),
     }
 }
 
@@ -320,6 +375,7 @@ fn attribute_views(attributes: &Attributes) -> Vec<AttributeView> {
                 AttrValue::Bool(_) => (AttrKindView::Bool, vec![scalar_text(value)]),
                 AttrValue::Int(_) => (AttrKindView::Int, vec![scalar_text(value)]),
                 AttrValue::Double(_) => (AttrKindView::Double, vec![scalar_text(value)]),
+                AttrValue::Map(_) => (AttrKindView::Map, vec![value.text()]),
                 AttrValue::Array(items) => {
                     (AttrKindView::Array, items.iter().map(scalar_text).collect())
                 }

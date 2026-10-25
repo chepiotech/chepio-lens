@@ -7,6 +7,7 @@ use chepio_lens_conventions::keys::{
 };
 // Domain
 use super::linker::db_target;
+use super::log_record::{LogLevel, LogRecord};
 use super::node::{DbTarget, service_node_id};
 use super::span::{ServiceKind, Span, SpanId, SpanKind, TraceId};
 
@@ -46,14 +47,16 @@ pub enum LogKind {
     Call,
     /// Any other span.
     Span,
+    Log,
+    Action,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LogEntry {
     /// Arrival order; breaks ties between entries with the same time.
     pub seq: u64,
-    pub trace_id: TraceId,
-    pub span_id: SpanId,
+    pub trace_id: Option<TraceId>,
+    pub span_id: Option<SpanId>,
     /// Retained for edge filtering: only a server span can represent the callee of a client span.
     pub span_kind: SpanKind,
     pub parent_span_id: Option<SpanId>,
@@ -67,6 +70,8 @@ pub struct LogEntry {
     pub text: String,
     pub status_code: Option<u16>,
     pub error: bool,
+    pub level: Option<LogLevel>,
+    pub record: Option<Box<LogRecord>>,
     /// Lowercase text, service and trace id, for search.
     pub search: String,
 }
@@ -106,8 +111,8 @@ impl LogEntry {
         }
         Self {
             seq,
-            trace_id: span.trace_id,
-            span_id: span.span_id,
+            trace_id: Some(span.trace_id),
+            span_id: Some(span.span_id),
             span_kind: span.kind,
             parent_span_id: span.parent_span_id,
             time_ns: span.start_ns,
@@ -120,6 +125,8 @@ impl LogEntry {
             text,
             status_code,
             error: span.is_error(),
+            level: None,
+            record: None,
         }
     }
 }
@@ -138,6 +145,56 @@ pub struct LogCursor {
 }
 
 impl LogEntry {
+    pub fn from_record(record: LogRecord, seq: u64) -> Self {
+        let body = record.body.text();
+        let kind = match record
+            .attributes
+            .get(chepio_lens_conventions::keys::LENS_LOG_KIND)
+            .and_then(super::span::AttrValue::as_str)
+        {
+            Some("action") => LogKind::Action,
+            _ => LogKind::Log,
+        };
+        Self {
+            seq,
+            trace_id: record.trace_id,
+            span_id: record.span_id,
+            span_kind: SpanKind::Unspecified,
+            parent_span_id: None,
+            time_ns: record.time_ns,
+            duration_ns: 0,
+            layer: match record.service.kind {
+                ServiceKind::Frontend => Layer::Frontend,
+                ServiceKind::Service => Layer::Backend,
+            },
+            kind,
+            service: record.service.name.clone(),
+            nodes: vec![service_node_id(&record.service.name)],
+            text: cut(&one_line(&body)),
+            status_code: None,
+            error: matches!(record.level, Some(LogLevel::Error | LogLevel::Fatal)),
+            search: format!(
+                "{body} {} {}",
+                record.service.name,
+                record.trace_id.map(|id| id.to_string()).unwrap_or_default()
+            )
+            .to_lowercase(),
+            level: record.level,
+            record: Some(Box::new(record)),
+        }
+    }
+
+    pub fn approx_size(&self) -> usize {
+        192 + self.service.len()
+            + self.text.len()
+            + self.search.len()
+            + self.nodes.iter().map(|id| id.len() + 24).sum::<usize>()
+            + self
+                .record
+                .as_ref()
+                .map_or(0, |record| record.approx_size())
+    }
+
     pub fn cursor(&self) -> LogCursor {
         LogCursor {
             time_ns: self.time_ns,
@@ -155,6 +212,8 @@ pub struct LogQuery {
     /// Edge id; matched through the spans that made the call (see `matches`).
     pub edge: Option<String>,
     pub status: Option<StatusFilter>,
+    pub levels: Vec<LogLevel>,
+    pub kinds: Vec<LogKind>,
     /// Case-insensitive substring of the line text, service or trace id.
     pub text: Option<String>,
     /// Only entries before this position (older), for paging.
@@ -176,11 +235,21 @@ impl LogQuery {
                 .as_ref()
                 .is_none_or(|node| entry.nodes.contains(node))
             && (self.edge.is_none()
-                || edge_spans.contains(&(entry.trace_id, entry.span_id))
+                || entry
+                    .trace_id
+                    .zip(entry.span_id)
+                    .is_some_and(|ids| edge_spans.contains(&ids))
                 || (entry.span_kind == SpanKind::Server
-                    && entry
-                        .parent_span_id
-                        .is_some_and(|parent| edge_spans.contains(&(entry.trace_id, parent)))))
+                    && entry.parent_span_id.is_some_and(|parent| {
+                        entry
+                            .trace_id
+                            .is_some_and(|trace| edge_spans.contains(&(trace, parent)))
+                    })))
+            && (self.levels.is_empty()
+                || entry
+                    .level
+                    .is_some_and(|level| self.levels.contains(&level)))
+            && (self.kinds.is_empty() || self.kinds.contains(&entry.kind))
             && match self.status {
                 None => true,
                 Some(StatusFilter::Error) => entry.error,
@@ -339,7 +408,8 @@ mod tests {
         server.search = "post /api/notes api".into();
         let mut failing = server.clone();
         failing.error = true;
-        let edge_spans = std::collections::HashSet::from([(server.trace_id, SpanId([1; 8]))]);
+        let edge_spans =
+            std::collections::HashSet::from([(server.trace_id.unwrap(), SpanId([1; 8]))]);
         let query = |query: LogQuery| query.matches(&server, &edge_spans);
 
         assert!(query(LogQuery::default()));

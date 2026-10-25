@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 // Domain
 use crate::domain::log::{LogCursor, LogEntry, LogPage, LogQuery};
+use crate::domain::log_record::LogRecord;
 use crate::domain::request::{HopRecord, RequestDetail, RequestSummary};
 use crate::domain::span::{Span, SpanId, TraceId};
 // Ports
@@ -17,6 +18,7 @@ pub struct StoreLimits {
     pub max_bytes: usize,
     pub max_spans_per_request: usize,
     pub max_log_entries: usize,
+    pub max_log_bytes: usize,
 }
 
 #[derive(Default)]
@@ -38,6 +40,8 @@ pub struct MemoryStore {
     /// One line per stored span, oldest first by time; the oldest is dropped over the bound.
     logs: BTreeMap<LogCursor, LogEntry>,
     log_seq: u64,
+    log_bytes: usize,
+    logs_evicted: u64,
 }
 
 impl MemoryStore {
@@ -51,12 +55,15 @@ impl MemoryStore {
             dropped_spans: 0,
             logs: BTreeMap::new(),
             log_seq: 0,
+            log_bytes: 0,
+            logs_evicted: 0,
         }
     }
 
     /// Client spans of every stored hop on `edge`.
     fn edge_spans(&self, edge: &str) -> HashSet<(TraceId, SpanId)> {
-        self.requests
+        let mut ids: HashSet<_> = self
+            .requests
             .iter()
             .flat_map(|(trace_id, request)| {
                 request
@@ -65,7 +72,40 @@ impl MemoryStore {
                     .filter(|hop| hop.edge_id == edge)
                     .map(|hop| (*trace_id, hop.client_span_id))
             })
-            .collect()
+            .collect();
+        let servers: Vec<_> = self
+            .requests
+            .iter()
+            .flat_map(|(trace, request)| {
+                request
+                    .spans
+                    .iter()
+                    .filter(|span| span.kind == crate::domain::span::SpanKind::Server)
+                    .filter(|span| {
+                        span.parent_span_id
+                            .is_some_and(|parent| ids.contains(&(*trace, parent)))
+                    })
+                    .map(|span| (*trace, span.span_id))
+            })
+            .collect();
+        ids.extend(servers);
+        ids
+    }
+
+    fn keep_log(&mut self, entry: LogEntry) {
+        self.log_bytes += entry.approx_size();
+        if let Some(previous) = self.logs.insert(entry.cursor(), entry) {
+            self.log_bytes -= previous.approx_size();
+        }
+        while self.logs.len() > self.limits.max_log_entries
+            || self.log_bytes > self.limits.max_log_bytes
+        {
+            let Some((_, entry)) = self.logs.pop_first() else {
+                break;
+            };
+            self.log_bytes -= entry.approx_size();
+            self.logs_evicted += 1;
+        }
     }
 
     fn evict_over_bounds(&mut self) {
@@ -100,11 +140,15 @@ impl TraceStore for MemoryStore {
         request.spans.push(span);
         self.bytes += size;
         self.evict_over_bounds();
-        self.logs.insert(entry.cursor(), entry.clone());
-        while self.logs.len() > self.limits.max_log_entries {
-            self.logs.pop_first();
-        }
+        self.keep_log(entry.clone());
         Inserted::Stored(entry)
+    }
+
+    fn insert_log(&mut self, record: LogRecord) -> LogEntry {
+        let entry = LogEntry::from_record(record, self.log_seq);
+        self.log_seq += 1;
+        self.keep_log(entry.clone());
+        entry
     }
 
     fn record_hop(&mut self, trace_id: TraceId, hop: HopRecord) {
@@ -174,6 +218,8 @@ impl TraceStore for MemoryStore {
             evicted_requests: self.evicted_requests,
             dropped_spans: self.dropped_spans,
             log_entries: self.logs.len(),
+            log_bytes: self.log_bytes,
+            logs_evicted: self.logs_evicted,
         }
     }
 }
@@ -190,6 +236,7 @@ mod tests {
         max_bytes: usize::MAX,
         max_spans_per_request: 100,
         max_log_entries: 100,
+        max_log_bytes: usize::MAX,
     };
 
     fn span_in(trace: u8, id: u8) -> Span {
@@ -266,8 +313,8 @@ mod tests {
         assert_eq!(
             spans,
             [
-                (TraceId([1; 16]), SpanId([2; 8])),
-                (TraceId([1; 16]), SpanId([1; 8])),
+                (Some(TraceId([1; 16])), Some(SpanId([2; 8]))),
+                (Some(TraceId([1; 16])), Some(SpanId([1; 8]))),
             ],
             "other traces and non-server children do not belong to this edge"
         );

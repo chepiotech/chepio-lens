@@ -1,23 +1,30 @@
 # Interfaces
 
-Status (2026-10-25): the collector side of sections 1, 3 and 4 (including the log and request detail endpoints) and
-both SDKs with header and body capture are implemented; the UI does not use the log and detail endpoints yet.
+Status (2026-10-25): traces, app logs and browser actions reach the collector, logs panel and request inspector.
+Both SDKs capture headers, bodies and structured application logs.
 Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
 (`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
 ## 1. OTLP ingest (SDKs → collector)
 
-- `POST /v1/traces` on the ingest listener (default `127.0.0.1:4318`, the standard OTLP/HTTP port).
+- `POST /v1/traces` and `POST /v1/logs` on the ingest listener (default `127.0.0.1:4318`, the standard OTLP/HTTP port).
 - Content types: `application/x-protobuf` (Rust SDK) and `application/json` (web SDK); anything else gets `415`.
   No `Content-Encoding` support: exporters must send uncompressed bodies (the Rust and JS exporters' default).
   Response follows the OTLP spec: `200` with partial-success details (spans with invalid ids or over the per-request
-  bound), `400` malformed, `408` body slower than 10 s, `413` body too large, `503` + `Retry-After: 1` when the
+  bound; logs with invalid context or severity), `400` malformed, `408` body slower than 10 s, `413` body too large, `503` + `Retry-After: 1` when the
   ingest concurrency bound is reached.
 - CORS: only for origins listed in `CHEPIO_LENS_CORS_ORIGINS`. Preflights from those origins get `200` with allowed
   method `POST`, allowed header `Content-Type`, `Access-Control-Max-Age: 600`; every response to them carries
   `Access-Control-Allow-Origin` and exposes `Retry-After`. A preflight or export with any other `Origin` (including
   `null`) gets `403`. Requests without `Origin` (backend SDKs, curl) are not affected.
 - OTLP/gRPC is not supported in the MVP (ADR-0001).
+
+Log exports use OTLP `ExportLogsServiceRequest/Response`. Trace and span ids are optional: empty or correctly
+sized all-zero ids mean absent; a span id without a valid trace id is rejected. Missing time uses observed time,
+then collector arrival time. Severity numbers 1–24 map to trace/debug/info/warn/error/fatal in groups of four;
+zero uses recognized severity text, otherwise the level is absent. Numbers outside 0–24 are rejected. Log resources
+create service nodes but never requests or edges. Log attributes normalize like span attributes; structured maps
+and arrays retain their keys through redaction. Retention and per-record limits are in `runtime.md`.
 
 ### Attributes the collector reads
 
@@ -39,7 +46,9 @@ Stable OpenTelemetry semantic conventions; the legacy names in brackets are mapp
 | `lens.http.request.body` | string | SDK | Request body, redacted, cut to the body limit |
 | `lens.http.response.body` | string | SDK | Response body, redacted, cut to the body limit |
 | `lens.http.request.body.truncated`, `lens.http.response.body.truncated` | bool | SDK | The body was cut |
-| `lens.redaction.count` | int | SDK, collector | Number of values masked on this span |
+| `lens.redaction.count` | int | SDK, collector | Number of values masked on this span or log record |
+| `lens.log.kind` | string | web SDK | `action` for clicks, submits and navigation; other values mean an ordinary log |
+| `lens.log.truncated` | bool | both SDKs | Some log content was omitted or shortened |
 | resource `lens.node.kind` | string | SDK (optional) | Overrides node kind: `frontend` or `service` |
 | resource `lens.sdk.version` | string | SDK | chepio-lens SDK version |
 
@@ -72,6 +81,13 @@ let app = Router::new() /* routes */ .layer(lens.http_layer());
   `db.namespace`, `db.query.text`, `db.operation.name`, `db.response.returned_rows`; no parameter values (ADR-0010).
   Without `with_database` the system is `other_sql`. Database spans need `sqlx::query` events at `DEBUG` to reach the SDK's tracing layer; the
   first request prints one warning to stderr when they do not.
+- Application logs: `tracing` events reaching `lens.tracing_layer()` become OTLP logs with severity, target, fields
+  and the current OTel context. `sqlx::query` still becomes a query span only. The application's subscriber controls
+  levels; the subscriber that `install_tracing()` sets exports `INFO` and above and lets `sqlx::query` through at
+  `DEBUG` for database spans, so libraries' `DEBUG`/`TRACE` events (such as axum's line per accepted connection) stay
+  out (`sdk/rust/tests/install_tracing_levels.rs`). Telemetry-internal events and HTTP transport targets (`hyper`, `hyper_util`, `h2`, `reqwest`) are excluded
+  from this export layer to prevent export loops; other subscriber layers remain unchanged. Transport exclusions
+  also apply to those libraries when used by the app. Without an active context a log remains uncorrelated.
 - Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*`.
 
 Browser:
@@ -100,8 +116,18 @@ const lens = initLens({
   bodies from a clone taken before the app receives the response (an outer `fetch` wrapper around the
   instrumentation, which hands its span over through `requestHook`). The app's own request and response are not
   touched. A body still being read when the span ends (300 ms after the response completes) is left out.
-- Export: OTLP/HTTP JSON to `<endpoint>/v1/traces` with `fetch` (`keepalive`, CORS mode, no credentials), batch every
-  500 ms, queue 2,048 spans, timeout 2 s; export requests are not traced. An endpoint that is not a URL prints one
+- Console: `debug`, `info`, `log`, `warn`, `error` become logs; `log` maps to info. Original console methods still
+  receive the original arguments. Structured arguments are serialized with key masking and fixed limits; getters
+  and custom serializers are not invoked. OpenTelemetry diagnostics and export traffic are excluded.
+- Actions: clicks, submits and history/popstate/hashchange navigation become info logs. Labels use accessible names
+  or button/link text, never input values; navigation captures only the pathname. Initialize before registering
+  application handlers. The first fetch started synchronously by an event handler supplies its actual trace/span
+  ids to the action. Handlers after `await`, timers, pre-existing handlers and inline handlers have no promised
+  correlation; the SDK never guesses a link from temporal proximity (ADR-0012). It creates no action spans.
+- Shutdown restores console and history methods and stops action capture. A single pass-through event-listener
+  wrapper remains to preserve listener identity for removal and duplicate registration after shutdown/reinit.
+- Export: OTLP/HTTP JSON to `<endpoint>/v1/traces` and `<endpoint>/v1/logs` with `fetch` (`keepalive`, CORS mode, no credentials), batch every
+  500 ms, separate queues of 2,048 spans and 2,048 logs, timeout 2 s; export requests are not traced. An endpoint that is not a URL prints one
   console warning and leaves the SDK off; `initLens` never throws. A second call while running returns the running
   instance.
 - Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*` (`telemetry.sdk.language =
@@ -116,7 +142,7 @@ CORS. JSON only. Internal contract: the UI and the collector ship in one binary,
 | Endpoint | Returns |
 |---|---|
 | `GET /api/graph` | `{ nodes, edges, generated_at }` |
-| `GET /api/logs?layer=&node=&edge=&status=&q=&limit=&before=` | Log lines, newest first: `{ entries, next_before }`. `layer`: comma-separated `frontend`, `backend`, `database` (empty = all); `node`: a node id; `edge`: an edge id (lines of the client spans of its hops and of the server spans they called within the same trace, for requests still in memory); `status`: `ok` or `error`; `q`: case-insensitive substring of the line text, service or trace id; `limit`: default 100, at most 500; `before`: an entry `id` for the next, older page. Unknown values give `400` |
+| `GET /api/logs?layer=&node=&edge=&status=&level=&kind=&q=&limit=&before=` | Log lines, newest first: `{ entries, next_before }`. `layer`: comma-separated `frontend`, `backend`, `database` (empty = all); `node`: a node id; `edge`: an edge id (lines of the client spans of its hops and of the server spans they called within the same trace, for requests still in memory); `status`: `ok` or `error` (error/fatal for log records); `level`: comma-separated trace/debug/info/warn/error/fatal (span lines have no level); `kind`: comma-separated log/action/request/query/call/span; `q`: case-insensitive substring of the line text, service or trace id; `limit`: default 100, at most 500; `before`: an entry `id` for the next, older page. Unknown values give `400` |
 | `GET /api/requests/{trace_id}` | The request summary and every span: ids, parent, service, layer, kind, name, start offset from the request's earliest span as received (I12), duration, status and message, attributes (`{key, kind, values}`; arrays as one value per item), events (name, offset from the span's start, attributes, `truncated_attributes`), truncated span keys. `400` for a malformed id, `404` once evicted or reset |
 | `GET /api/events` | Server-Sent Events stream, see below |
 | `POST /api/reset` | Clears requests, logs and graph; `204` |
@@ -126,8 +152,14 @@ CORS. JSON only. Internal contract: the UI and the collector ship in one binary,
 SSE events: `node` (node created or changed), `edge` (edge stats changed, with `routes`: calls per route of the
 callee, most called first), `request` (new or updated request summary with `has_root` and `hops`: each edge it
 touched with its start offset and duration on the request's timeline, used for animation), `log` (a new log line,
-one per stored span, the same shape as an entry of `GET /api/logs`), `resync` (the client fell behind and must fetch
+one per stored span or app/action record, the same shape as an entry of `GET /api/logs`), `resync` (the client fell behind and must fetch
 `/api/graph` again).
+
+Log entries have nullable `trace_id`, `span_id`, `level`, `duration_ms` and `record`. For app/action logs, duration
+is absent and `record` contains `body` (redacted text), typed `attributes` and `truncated`; span lines have no record.
+The inspector shows uncorrelated logs directly. Correlated logs can open their retained request; a missing request
+does not hide the log. Edge filters include logs with the actual client or server span context, including records
+received before those spans. Text search covers the stored redacted message, service and trace id.
 
 JSON shapes: `collector/src/types/api.rs`; the UI uses the TypeScript generated from them in `ui/src/api/generated/`
 (ADR-0009).
@@ -150,4 +182,4 @@ that ordering. Neither export delay nor animation duration is included in `last_
 | `CHEPIO_LENS_REDACT_KEYS` | SDKs, collector | empty | Extra keys to mask, comma-separated; added to the defaults in `security.md` |
 | `CHEPIO_LENS_OTLP_ADDR` | collector | `127.0.0.1:4318` | Ingest listener |
 | `CHEPIO_LENS_UI_ADDR` | collector | `127.0.0.1:4320` | UI and UI API listener |
-| `CHEPIO_LENS_CORS_ORIGINS` | collector | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to send spans, comma-separated `scheme://host[:port]`; no wildcard; empty allows none |
+| `CHEPIO_LENS_CORS_ORIGINS` | collector | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to send telemetry, comma-separated `scheme://host[:port]`; no wildcard; empty allows none |

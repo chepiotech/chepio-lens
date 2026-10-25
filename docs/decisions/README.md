@@ -15,3 +15,4 @@ One decision per file. An accepted decision is never edited: a new ADR supersede
 | [ADR-0009](ADR-0009-ui-api-types-from-rust.md) | TypeScript types for the UI API are generated from the collector's Rust types | Accepted |
 | [ADR-0010](ADR-0010-no-sql-parameter-values.md) | SQL parameter values are not captured | Accepted |
 | [ADR-0011](ADR-0011-collector-distribution.md) | The collector ships as a multi-architecture image on GHCR from v* tags, or is installed from a clone | Accepted |
+| [ADR-0012](ADR-0012-app-logs-and-browser-actions.md) | OTLP app logs and synchronous browser action correlation | Accepted |

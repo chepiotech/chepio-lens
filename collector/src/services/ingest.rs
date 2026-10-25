@@ -15,7 +15,7 @@ use crate::domain::time::Now;
 // Ports
 use crate::ports::{EventPublisher, Inserted, OtlpCodec};
 // Services
-use super::redaction::redact_span;
+use super::redaction::{redact_log, redact_span};
 use super::state::{Shared, State};
 // Types
 use crate::types::OtlpEncoding;
@@ -86,6 +86,47 @@ impl Ingest {
         };
         IngestReply::Accepted {
             body: self.codec.encode_response(encoding, rejected, message),
+        }
+    }
+
+    /// App logs share the bounded log and service nodes; they never increment call counters.
+    pub fn handle_logs(&self, encoding: OtlpEncoding, body: &[u8], now: Now) -> IngestReply {
+        let counters = &self.shared.counters;
+        let mut batch = match self.codec.decode_logs(encoding, body) {
+            Ok(batch) => batch,
+            Err(message) => {
+                counters.batches_malformed.fetch_add(1, Ordering::Relaxed);
+                return IngestReply::Malformed { message };
+            }
+        };
+        counters.logs_received.fetch_add(
+            batch.records.len() as u64 + batch.rejected,
+            Ordering::Relaxed,
+        );
+        counters
+            .logs_rejected
+            .fetch_add(batch.rejected, Ordering::Relaxed);
+        for record in &mut batch.records {
+            if record.time_ns == 0 {
+                record.time_ns = now.unix_ns;
+            }
+            redact_log(record, &self.redactor);
+        }
+        let updates = {
+            let mut state = self.shared.lock();
+            let mut changes = Changes::default();
+            let mut logs = Vec::new();
+            for record in batch.records {
+                state
+                    .graph
+                    .observe_service(&record.service, now, &mut changes);
+                logs.push(state.store.insert_log(record));
+            }
+            events(&state, &changes, &BTreeSet::new(), logs, now)
+        };
+        self.publish(&updates);
+        IngestReply::Accepted {
+            body: self.codec.encode_logs_response(encoding, batch.rejected),
         }
     }
 

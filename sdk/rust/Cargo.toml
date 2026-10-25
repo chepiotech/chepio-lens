@@ -12,16 +12,16 @@ publish.workspace = true
 axum = "0.8.9"
 chepio-lens-conventions = { path = "../../conventions" }
 http-body = "1.1.0"
-opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
+opentelemetry = { version = "0.33.1", default-features = false, features = ["trace", "logs"] }
 opentelemetry-http = { version = "0.33.1", default-features = false }
-opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }
-opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace", "logs"] }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace", "logs"] }
 tower = "0.5.3"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
 
 [dev-dependencies]
-opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace", "testing"] }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace", "logs", "testing"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "time"] }
 tower = { version = "0.5.3", features = ["util"] }

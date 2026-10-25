@@ -6,6 +6,7 @@ pub mod event;
 pub mod graph;
 pub mod linker;
 pub mod log;
+pub mod log_record;
 pub mod node;
 pub mod request;
 pub mod span;

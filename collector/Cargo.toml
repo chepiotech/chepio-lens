@@ -17,7 +17,7 @@ axum = "0.8.9"
 chepio-lens-conventions = { path = "../conventions" }
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
 http-body-util = "0.1.5"
-opentelemetry-proto = { version = "0.33.1", default-features = false, features = ["gen-tonic-messages", "trace", "with-serde"] }
+opentelemetry-proto = { version = "0.33.1", default-features = false, features = ["gen-tonic-messages", "trace", "logs", "with-serde"] }
 prost = "0.14.4"
 rust-embed = "8.13.0"
 serde = { version = "1.0.229", features = ["derive"] }

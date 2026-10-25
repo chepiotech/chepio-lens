@@ -108,7 +108,7 @@ function App() {
             <DetailsPanel graph={graph} selection={selection} inline onClose={() => setSelection(null)} />
           </details>}
           <LogsPanel graph={graph} filters={filters} onFilters={setFilters} logs={logs} visible={!requestSelection}
-            onInspect={(entry) => { logs.pause(); setRequestSelection({ traceId: entry.trace_id, spanId: entry.span_id }) }} />
+            onInspect={(entry) => { logs.pause(); setRequestSelection({ traceId: entry.trace_id, spanId: entry.span_id, log: entry.record ? entry : undefined }) }} />
           {requestSelection && <RequestInspector selection={requestSelection} revision={requestRevision} onBack={() => setRequestSelection(null)} />}
         </InvestigationPanel>}
       </main>

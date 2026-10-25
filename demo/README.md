@@ -38,7 +38,9 @@ Request bodies are limited to 64 KiB.
 ## End-to-end check
 
 `demo/e2e/backend-db.sh` starts the stack, calls the API and checks that the map shows `demo-api → postgres` with the
-right number of calls within 2 s. `--no-build` skips the image build, `--down` stops the stack afterwards.
+right number of calls within 2 s. `--no-build` skips the image build, `--down` stops the stack afterwards. Close
+browser tabs with the demo first: when a rebuild restarts the web container, Vite reloads every open tab, and the
+page load's note queries land in the count (the script says so when it sees browser requests).
 
 With the stack up, the browser test adds a note in the demo and checks that the map shows `demo-web → demo-api →
 postgresql demo` within 2 s and animates the request once (Chromium via Playwright):
@@ -54,10 +56,15 @@ config may set `use.baseURL` for the UI and `metadata.otlpUrl` for ingest (defau
 
 `request-inspector.spec.ts` covers the logs filters, edge selection, payload masking and literal HTML rendering,
 waterfall clock skew, SQL and errors, live pause/resume/reconnect, docking and resizing, pagination bounds, late
-search responses and failed/evicted loads. Tests run with one worker because they share and reset the collector.
+search responses and failed/evicted loads. `app-logs.spec.ts` covers React click-to-fetch correlation, explicitly unlinked async actions, console severity and
+structured redaction, literal HTML, live backend logs without request context and reset. Tests run with one worker
+because they share and reset the collector.
 
 On the map, click **Logs** to see the activity stream, or click an arrow to filter it to that edge. Select a line
-to inspect its trace and span. The panel can dock on the right or at the bottom; drag its divider or use the arrow
+to inspect its trace and span. **Kind** and **Level** filter app logs and actions. Browser console calls appear with
+their severity; click/submit actions can open the first fetch started synchronously by their handler. A log without
+a request still opens its message and attributes. Backend applications using the installed tracing layer export
+their own `tracing` events; SQL query events remain query spans. The panel can dock on the right or at the bottom; drag its divider or use the arrow
 keys while the divider is focused to resize it. Scrolling up pauses live updates; **Resume live** returns to the
 newest entries. Edge statistics include the session totals, approximate percentiles and calls per route.
 

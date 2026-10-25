@@ -71,6 +71,7 @@ impl AppState {
 pub fn otlp_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/v1/traces", post(ingest::traces))
+        .route("/v1/logs", post(ingest::logs))
         .layer(cors::layer(&state.cors_origins))
         .layer(from_fn_with_state(
             state.clone(),

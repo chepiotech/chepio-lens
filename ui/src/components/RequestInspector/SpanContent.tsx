@@ -5,7 +5,7 @@ import type { SpanView } from '../../api/generated/SpanView'
 import { attribute, bodyContent, spanError } from './requestDetails'
 import { formatMs } from '../../map/formatMs'
 
-function AttributeList({ attributes }: { attributes: AttributeView[] }) {
+export function AttributeList({ attributes }: { attributes: AttributeView[] }) {
   return <dl className="request-inspector__attributes">{attributes.map((item) => <div key={item.key}>
     <dt>{item.key}</dt><dd><pre>{item.values.join('\n')}</pre></dd>
   </div>)}</dl>

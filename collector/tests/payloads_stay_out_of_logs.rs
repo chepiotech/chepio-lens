@@ -94,6 +94,30 @@ async fn payload_values_never_reach_the_collector_log() {
         StatusCode::BAD_REQUEST,
         "a trace id that is not hex fails decoding"
     );
+    for (body, expected) in [
+        (
+            format!(
+                r#"{{"resourceLogs":[{{"scopeLogs":[{{"logRecords":[{{"body":{{"stringValue":"{MARKER}"}},"attributes":[{{"key":"note","value":{{"stringValue":"{MARKER}"}}}}]}}]}}]}}]}}"#
+            ),
+            StatusCode::OK,
+        ),
+        (
+            format!(r#"{{"resourceLogs":"{MARKER}"}}"#),
+            StatusCode::BAD_REQUEST,
+        ),
+    ] {
+        let response = otlp
+            .clone()
+            .oneshot(
+                Request::post("/v1/logs")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), expected);
+    }
     let log = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
     assert!(
         log.contains("malformed OTLP export"),
