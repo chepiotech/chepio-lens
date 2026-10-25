@@ -36,6 +36,10 @@ backend SDK emits.
 Workspaces: one Cargo workspace (collector, conventions, Rust SDK, demo API) and one pnpm workspace (UI, web SDK,
 demo web) at the repository root.
 
+Distribution: the collector as the image `ghcr.io/chepiotech/chepio-lens` (amd64 and arm64, pushed from `v*` tags)
+run with `collector/compose.yaml`, or installed from a clone (ADR-0011); the SDKs as git dependencies of this
+repository until `v0.1.0` (ADR-0007).
+
 ## Allowed dependencies
 
 ```

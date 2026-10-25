@@ -19,6 +19,12 @@ COPY --from=ui /app/ui/dist ui/dist
 RUN cargo build --release --locked -p chepio-lens-collector
 
 FROM debian:trixie-slim
+LABEL org.opencontainers.image.title="chepio-lens" \
+      org.opencontainers.image.description="Live map of a running app for local development: collector, map and request inspector" \
+      org.opencontainers.image.source="https://github.com/chepiotech/chepio-lens" \
+      org.opencontainers.image.licenses="MIT OR Apache-2.0"
+# The collector listens on 127.0.0.1 unless CHEPIO_LENS_OTLP_ADDR and CHEPIO_LENS_UI_ADDR say otherwise;
+# collector/compose.yaml sets 0.0.0.0 inside the container and publishes on 127.0.0.1 only (ADR-0003).
 COPY --from=build /src/target/release/chepio-lens /usr/local/bin/chepio-lens
 USER 65534:65534
 EXPOSE 4318 4320

@@ -28,6 +28,31 @@ Your app                                        chepio-lens
 The first version targets local development of React + Rust (axum, sqlx) + Postgres apps. Docker and Kubernetes
 views, more backend languages and a production mode are planned later.
 
+## Run the collector
+
+With Docker, from a clone, or with the service in [`collector/compose.yaml`](collector/compose.yaml) copied into
+your project's compose file:
+
+```sh
+docker compose -f collector/compose.yaml up -d
+```
+
+The image `ghcr.io/chepiotech/chepio-lens` (amd64 and arm64) is published from `v0.1.0` on. Until then build it
+first: `docker build -f collector/Dockerfile -t chepio-lens:dev .`, then run the command above with
+`CHEPIO_LENS_IMAGE=chepio-lens:dev`.
+
+Without Docker, from a clone (Rust from `rust-toolchain.toml`, Node 24, pnpm):
+
+```sh
+pnpm install --frozen-lockfile --filter ui... && pnpm --filter ui build
+cargo install --path collector --locked
+chepio-lens
+```
+
+The map is at http://localhost:4320; SDKs send to http://localhost:4318. A browser app served from an origin other
+than `http://localhost:5173` must be listed in `CHEPIO_LENS_CORS_ORIGINS`, or its spans are refused. `cargo install
+--git` builds a collector without the map ([ADR-0011](docs/decisions/ADR-0011-collector-distribution.md)).
+
 ## Documentation
 
 - Architecture: [components](docs/architecture/components.md), [data](docs/architecture/data.md),
