@@ -5,7 +5,8 @@ use chepio_lens_conventions::keys::{
     HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, HTTP_ROUTE, URL_FULL, URL_PATH,
 };
 // Domain
-use super::span::{Span, SpanId, TraceId};
+use super::packet::Packet;
+use super::span::{Span, SpanId, SpanKind, TraceId};
 
 /// How far up the span tree a hop looks for the hop that called it; bounds the walk on malformed traces.
 const MAX_PARENT_DEPTH: usize = 64;
@@ -26,6 +27,8 @@ pub struct Hop {
     pub edge: String,
     pub start_offset_ns: u64,
     pub duration_ns: u64,
+    /// What travelled; `None` when the caller span is no longer stored.
+    pub packet: Option<Packet>,
 }
 
 /// A request with all its spans, for the inspector.
@@ -156,6 +159,13 @@ fn place_hops(spans: &[Span], records: &[HopRecord]) -> Vec<Hop> {
             edge: record.edge_id.clone(),
             start_offset_ns: offset.unwrap_or(0),
             duration_ns: record.duration_ns,
+            packet: by_id.get(&record.client_span_id).map(|caller| {
+                let callee = spans.iter().find(|span| {
+                    span.kind == SpanKind::Server
+                        && span.parent_span_id == Some(record.client_span_id)
+                });
+                Packet::of(caller, callee)
+            }),
         })
         .collect();
     hops.sort_by(|a, b| (a.start_offset_ns, &a.edge).cmp(&(b.start_offset_ns, &b.edge)));
@@ -235,7 +245,9 @@ mod tests {
     // Core
     use super::*;
     use crate::domain::linker::tests::span;
+    use crate::domain::packet::{BodyKind, PacketKind};
     use crate::domain::span::{AttrValue, SpanKind};
+    use chepio_lens_conventions::keys::{DB_OPERATION_NAME, DB_SYSTEM_NAME};
 
     fn hop(edge: &str, client: u8, start_ns: u64, duration_ns: u64) -> HopRecord {
         HopRecord {
@@ -315,12 +327,45 @@ mod tests {
     fn hops_follow_the_call_tree_whatever_the_clock_skew() {
         const SKEW: u64 = 5_000_000_000;
         let fetch = timed(
-            span("web", SpanKind::Client, 1, None, &[]),
+            span(
+                "web",
+                SpanKind::Client,
+                1,
+                None,
+                &[(URL_FULL, AttrValue::Str("http://web/api/notes".into()))],
+            ),
             SKEW + 1_000,
             10_000,
         );
-        let server = timed(span("api", SpanKind::Server, 2, Some(1), &[]), 2_000, 8_000);
-        let query = timed(span("api", SpanKind::Client, 3, Some(2), &[]), 5_000, 3_000);
+        // The server span fills in what the browser span lacks.
+        let server = timed(
+            span(
+                "api",
+                SpanKind::Server,
+                2,
+                Some(1),
+                &[
+                    (HTTP_REQUEST_METHOD, AttrValue::Str("GET".into())),
+                    (HTTP_RESPONSE_STATUS_CODE, AttrValue::Int(200)),
+                ],
+            ),
+            2_000,
+            8_000,
+        );
+        let query = timed(
+            span(
+                "api",
+                SpanKind::Client,
+                3,
+                Some(2),
+                &[
+                    (DB_SYSTEM_NAME, AttrValue::Str("postgresql".into())),
+                    (DB_OPERATION_NAME, AttrValue::Str("SELECT".into())),
+                ],
+            ),
+            5_000,
+            3_000,
+        );
         let records = [
             hop("svc:api->db:x", 3, 5_000, 3_000),
             hop("svc:web->svc:api", 1, SKEW + 1_000, 10_000),
@@ -336,12 +381,28 @@ mod tests {
                     edge: "svc:web->svc:api".into(),
                     start_offset_ns: 0,
                     duration_ns: 10_000,
+                    packet: Some(Packet {
+                        kind: PacketKind::Http,
+                        operation: Some("GET".into()),
+                        request_body: BodyKind::None,
+                        response_body: BodyKind::None,
+                        status_code: Some(200),
+                        error: false,
+                    }),
                 },
                 // Half of the 2 µs the fetch saw beyond the server span, plus 3 µs into the server span.
                 Hop {
                     edge: "svc:api->db:x".into(),
                     start_offset_ns: 1_000 + 3_000,
                     duration_ns: 3_000,
+                    packet: Some(Packet {
+                        kind: PacketKind::Sql,
+                        operation: Some("SELECT".into()),
+                        request_body: BodyKind::None,
+                        response_body: BodyKind::None,
+                        status_code: None,
+                        error: false,
+                    }),
                 },
             ]
         );

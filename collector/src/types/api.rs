@@ -10,6 +10,7 @@ use crate::domain::edge::{EdgeSnapshot, Protocol};
 use crate::domain::log::{Layer, LogCursor, LogEntry, LogKind};
 use crate::domain::log_record::LogLevel;
 use crate::domain::node::{Node, NodeKind};
+use crate::domain::packet::{BodyKind, Packet, PacketKind};
 use crate::domain::request::{RequestDetail, RequestSummary};
 use crate::domain::span::{AttrValue, Attributes, Span, SpanKind, Status};
 
@@ -119,6 +120,67 @@ pub struct HopView {
     pub edge: String,
     pub start_offset_ms: f64,
     pub duration_ms: f64,
+    /// What travelled, for the map's packet icons; `null` when the caller span is no longer stored.
+    pub packet: Option<PacketView>,
+}
+
+/// The request and response of one hop (`docs/architecture/interfaces.md`, packet icons).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct PacketView {
+    pub kind: PacketKindView,
+    /// HTTP method or SQL operation, upper case.
+    pub operation: Option<String>,
+    pub request_body: BodyKindView,
+    pub response_body: BodyKindView,
+    pub status_code: Option<u16>,
+    /// The edge's rule: the caller or the callee failed.
+    pub error: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PacketKindView {
+    Http,
+    Https,
+    Sql,
+}
+
+/// What a body holds, from its content type and size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum BodyKindView {
+    None,
+    Json,
+    Form,
+    Text,
+    Binary,
+}
+
+impl From<&Packet> for PacketView {
+    fn from(packet: &Packet) -> Self {
+        let body = |kind: BodyKind| match kind {
+            BodyKind::None => BodyKindView::None,
+            BodyKind::Json => BodyKindView::Json,
+            BodyKind::Form => BodyKindView::Form,
+            BodyKind::Text => BodyKindView::Text,
+            BodyKind::Binary => BodyKindView::Binary,
+        };
+        Self {
+            kind: match packet.kind {
+                PacketKind::Http => PacketKindView::Http,
+                PacketKind::Https => PacketKindView::Https,
+                PacketKind::Sql => PacketKindView::Sql,
+            },
+            operation: packet.operation.clone(),
+            request_body: body(packet.request_body),
+            response_body: body(packet.response_body),
+            status_code: packet.status_code,
+            error: packet.error,
+        }
+    }
 }
 
 /// SSE event names on `GET /api/events`: `node` → `NodeView`, `edge` → `EdgeView`, `request` → `RequestView`,
@@ -593,6 +655,7 @@ impl From<&RequestSummary> for RequestView {
                     edge: hop.edge.clone(),
                     start_offset_ms: ms(hop.start_offset_ns),
                     duration_ms: ms(hop.duration_ns),
+                    packet: hop.packet.as_ref().map(PacketView::from),
                 })
                 .collect(),
         }

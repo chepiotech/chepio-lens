@@ -16,3 +16,4 @@ One decision per file. An accepted decision is never edited: a new ADR supersede
 | [ADR-0010](ADR-0010-no-sql-parameter-values.md) | SQL parameter values are not captured | Accepted |
 | [ADR-0011](ADR-0011-collector-distribution.md) | The collector ships as a multi-architecture image on GHCR from v* tags, or is installed from a clone | Accepted |
 | [ADR-0012](ADR-0012-app-logs-and-browser-actions.md) | OTLP app logs and synchronous browser action correlation | Accepted |
+| [ADR-0013](ADR-0013-packet-icons-from-lucide-path-data.md) | Packet icons are Lucide path data drawn on the canvas, not an icon package | Accepted |

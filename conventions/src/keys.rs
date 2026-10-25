@@ -18,6 +18,7 @@ pub const HTTP_RESPONSE_BODY_SIZE: &str = "http.response.body.size";
 pub const URL_FULL: &str = "url.full";
 pub const URL_PATH: &str = "url.path";
 pub const URL_QUERY: &str = "url.query";
+pub const URL_SCHEME: &str = "url.scheme";
 pub const SERVER_ADDRESS: &str = "server.address";
 pub const SERVER_PORT: &str = "server.port";
 

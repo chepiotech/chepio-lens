@@ -1,8 +1,9 @@
 # chepio-lens
 
 A live map of a running full-stack app. chepio-lens shows the frontend, the backend and the database as nodes on a
-canvas, animates every request along the path it takes, and lets you open any request to see its timeline, headers,
-bodies and SQL.
+canvas and animates every request along the path it takes: an HTTP or HTTPS document with its body type on the way
+out, the SQL query by operation, the response or the failure on the way back, and log lines and user actions at
+their nodes. Open any request to see its timeline, headers, bodies and SQL.
 
 **Status:** early development with a working local demo: the browser → API → database map, live filtered logs with
 app log records (Rust `tracing`, browser `console.*`) and user actions (clicks, submits, navigation), request
@@ -73,3 +74,6 @@ chepio-lens shows request payloads. It is meant for local development only: it h
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your
 option. Unless you explicitly state otherwise, any contribution you submit for inclusion in this project, as defined
 in the Apache-2.0 license, is dual licensed as above, without any additional terms or conditions.
+
+The map's icons are outlines from [Lucide](https://lucide.dev) (ISC; some derived from Feather, MIT); their license
+texts are in [ui/src/map/icons/LICENSE-lucide.txt](ui/src/map/icons/LICENSE-lucide.txt).

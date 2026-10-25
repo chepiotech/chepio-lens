@@ -5,6 +5,7 @@ import ChepioTechFooter from '../ChepioTechFooter/ChepioTechFooter'
 import DetailsPanel from '../DetailsPanel/DetailsPanel'
 import InvestigationPanel from '../InvestigationPanel/InvestigationPanel'
 import LogsPanel from '../LogsPanel/LogsPanel'
+import MapLegend from '../MapLegend/MapLegend'
 import MapSummary from '../MapSummary/MapSummary'
 import MapView, { type MapHandle } from '../MapView/MapView'
 import RequestInspector, { type RequestSelection } from '../RequestInspector/RequestInspector'
@@ -12,6 +13,7 @@ import RequestInspector, { type RequestSelection } from '../RequestInspector/Req
 import { useLensFeed } from '../../hooks/useLensFeed'
 import { useLogs } from '../../hooks/useLogs'
 // Types
+import type { LogEntryView } from '../../api/generated/LogEntryView'
 import type { RequestView } from '../../api/generated/RequestView'
 import type { Selection } from '../../map/MapRenderer'
 import type { LogFilters } from '../../logs/logState'
@@ -47,7 +49,12 @@ function App() {
     logs.invalidate()
     if (request.trace_id === requestSelection?.traceId) setRequestRevision((value) => value + 1)
   }, [logs.invalidate, requestSelection?.traceId])
-  const { graph, status, reset } = useLensFeed(onRequest, logs.invalidate, logs.resync)
+  // Each log line refreshes the panel; log records and user actions also flash at their nodes on the map.
+  const onLog = useCallback((entry: LogEntryView) => {
+    logs.invalidate()
+    mapRef.current?.flash(entry)
+  }, [logs.invalidate])
+  const { graph, status, reset } = useLensFeed(onRequest, onLog, logs.resync)
   const nodeCount = Object.keys(graph.nodes).length
   const edgeCount = Object.keys(graph.edges).length
   const select = (next: Selection) => {
@@ -100,6 +107,7 @@ function App() {
         <div className="app__map">
           <MapView ref={mapRef} graph={graph} selection={selection} onSelect={select} />
           <MapSummary graph={graph} />
+          <MapLegend />
           {selection?.kind === 'node' && <DetailsPanel graph={graph} selection={selection} onClose={() => setSelection(null)} />}
         </div>
         {panelOpen && <InvestigationPanel preferences={preferences} onPreferences={setPreferences} onClose={() => setPanelOpen(false)}>

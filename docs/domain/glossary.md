@@ -25,5 +25,6 @@
 | User action | A click, form submit or navigation in the browser, sent as a log record of kind `action`; linked to the request it causes only when that request starts synchronously in the same handler (ADR-0012) |
 | Layer | Which part of the app a log line belongs to: `frontend` (browser), `backend` (services) or `database` (queries) |
 | Hop | One edge a request crossed, with when it started on the request's timeline and how long it took |
+| Packet | What travelled on a hop: HTTP, HTTPS or SQL, the method or operation, the request and response body kinds, the status and whether it failed; the map draws it as icons |
 | Route stats | Calls of an edge broken down by the callee's route, e.g. `GET /api/notes` or `SELECT notes` |
 | Span event | Something that happened during a span, e.g. an `exception` or a browser timing mark |

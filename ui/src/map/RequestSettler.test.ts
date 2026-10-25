@@ -20,7 +20,7 @@ function request(traceId: string, hasRoot: boolean, edges: string[]): RequestVie
     span_count: edges.length + 1,
     dropped_spans: 0,
     has_root: hasRoot,
-    hops: edges.map((edge) => ({ edge, start_offset_ms: 0, duration_ms: 1 })),
+    hops: edges.map((edge) => ({ edge, start_offset_ms: 0, duration_ms: 1, packet: null })),
   }
 }
 

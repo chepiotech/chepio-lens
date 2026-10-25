@@ -1,6 +1,7 @@
 // Core
 import { type Ref, useEffect, useImperativeHandle, useRef } from 'react'
 // Types
+import type { LogEntryView } from '../../api/generated/LogEntryView'
 import type { GraphState } from '../../map/graphState'
 // Utils
 import { MapRenderer, type Selection } from '../../map/MapRenderer'
@@ -8,7 +9,7 @@ import type { Pulse } from '../../map/requestPulses'
 // Styles
 import './MapView.css'
 
-export type MapHandle = { pulse: (pulses: Pulse[]) => void }
+export type MapHandle = { pulse: (pulses: Pulse[]) => void; flash: (entry: LogEntryView) => void }
 
 type Props = {
   ref?: Ref<MapHandle>
@@ -41,7 +42,10 @@ function MapView({ ref, graph, selection, onSelect }: Props) {
     rendererRef.current?.setSelection(selection)
   }, [selection])
 
-  useImperativeHandle(ref, () => ({ pulse: (pulses) => rendererRef.current?.pulse(pulses) }), [])
+  useImperativeHandle(ref, () => ({
+    pulse: (pulses) => rendererRef.current?.pulse(pulses),
+    flash: (entry) => rendererRef.current?.flash(entry),
+  }), [])
 
   return (
     <canvas
