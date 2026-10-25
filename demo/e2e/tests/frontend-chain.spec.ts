@@ -1,28 +1,10 @@
 // Core
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { expect, test } from '@playwright/test'
+// Utils
+import { DEMO, LENS, waitForQuiet } from './support/collector'
 
-// Fixed by demo/compose.yaml; the demo origin is in the collector's default CORS list.
-const DEMO = 'http://localhost:5173'
-const LENS = 'http://localhost:4320'
 /** Request end → visible on the map (docs/architecture/quality-attributes.md). */
 const BUDGET_MS = 2_000
-
-async function spansReceived(request: APIRequestContext): Promise<number> {
-  const stats = (await (await request.get(`${LENS}/api/stats`)).json()) as { spans_received: number }
-  return stats.spans_received
-}
-
-/** Waits until no spans have arrived for 1.5 s, so earlier batches cannot land after a reset. */
-async function waitForQuiet(request: APIRequestContext) {
-  let previous = -1
-  for (let i = 0; i < 20; i += 1) {
-    const received = await spansReceived(request)
-    if (received === previous) return
-    previous = received
-    await new Promise((resolve) => setTimeout(resolve, 1_500))
-  }
-  throw new Error('spans kept arriving for 30 s')
-}
 
 // The frontend slice is done when one click in the demo shows the whole chain on the map, animated.
 test('one click in the demo shows web → api → postgres on the map, animated once', async ({ context, request }) => {
