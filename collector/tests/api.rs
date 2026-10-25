@@ -289,7 +289,15 @@ async fn events_stream_reports_new_nodes_edges_and_requests() {
         request.contains("\"trace_id\":\"4bf92f3577b34da6a3ce929d0e0e4736\""),
         "{request}"
     );
-    assert!(request.contains("\"edges\":[\"svc:demo-web->svc:demo-api\",\"svc:demo-api->db:postgresql:db:5432/demo\"]"), "{request}");
+    // Browser fetch 30 ms around a 26 ms server span: 2 ms network each way, then the query 3 ms into the server span.
+    assert!(
+        request.contains(concat!(
+            r#""hops":[{"edge":"svc:demo-web->svc:demo-api","start_offset_ms":0.0,"duration_ms":30.0},"#,
+            r#"{"edge":"svc:demo-api->db:postgresql:db:5432/demo","start_offset_ms":5.0,"duration_ms":4.0}]"#
+        )),
+        "{request}"
+    );
+    assert!(request.contains(r#""name":"GET /api/notes""#), "{request}");
 }
 
 #[tokio::test]

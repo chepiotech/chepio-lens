@@ -4,6 +4,7 @@ import type { NodeView } from '../api/generated/NodeView'
 // Utils
 import { type Camera, distanceToCurve, edgeCurve, fitCamera, insideNode, pointOnCurve, toWorld, zoomAt } from './geometry'
 import { NODE_HEIGHT, NODE_WIDTH, type Point, layoutGraph } from './layoutGraph'
+import type { Pulse } from './requestPulses'
 
 export type Selection = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null
 
@@ -22,15 +23,12 @@ const COLORS = {
 } as const
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
-const PULSE_MS = 700
-/** Delay between the edges of one request, so the path reads in order. */
-const PULSE_STEP_MS = 250
 /** Bound on animated pulses; the oldest are dropped first. */
 const MAX_PULSES = 400
 const CLICK_SLOP_PX = 4
 const EDGE_HIT_PX = 6
 
-type Pulse = { edgeId: string; start: number }
+type ActivePulse = { edgeId: string; start: number; durationMs: number }
 type Drag = { x: number; y: number; moved: boolean }
 
 /** Canvas 2D map outside React's render cycle (ADR-0006): React passes data in and receives selections out. */
@@ -40,7 +38,7 @@ export class MapRenderer {
   private nodes: NodeView[] = []
   private edges: EdgeView[] = []
   private positions = new Map<string, Point>()
-  private pulses: Pulse[] = []
+  private pulses: ActivePulse[] = []
   private selection: Selection = null
   private userMoved = false
   private dirty = true
@@ -77,10 +75,10 @@ export class MapRenderer {
     this.invalidate(false)
   }
 
-  /** Animates a request along the edges it touched, in order. */
-  pulse(edgeIds: string[]) {
+  /** Animates one request: a dot per hop, timed by `pulsesFor`. */
+  pulse(pulses: Pulse[]) {
     const now = performance.now()
-    edgeIds.forEach((edgeId, index) => this.pulses.push({ edgeId, start: now + index * PULSE_STEP_MS }))
+    for (const { edgeId, delayMs, durationMs } of pulses) this.pulses.push({ edgeId, start: now + delayMs, durationMs })
     if (this.pulses.length > MAX_PULSES) this.pulses.splice(0, this.pulses.length - MAX_PULSES)
   }
 
@@ -100,8 +98,10 @@ export class MapRenderer {
   }
 
   private readonly loop = (now: number) => {
-    this.pulses = this.pulses.filter((pulse) => now - pulse.start < PULSE_MS)
-    if (this.dirty || this.pulses.length > 0) {
+    const hadPulses = this.pulses.length > 0
+    this.pulses = this.pulses.filter((pulse) => now - pulse.start < pulse.durationMs)
+    // One more frame after the last pulse ends, so its final position does not stay on the canvas.
+    if (this.dirty || hadPulses) {
       this.draw(now)
       this.dirty = false
     }
@@ -170,8 +170,8 @@ export class MapRenderer {
     ctx.fillText(`${edge.count} · p95 ${formatMs(edge.p95_ms)}${errors}`, middle.x, middle.y - 8)
   }
 
-  private drawPulse(pulse: Pulse, now: number) {
-    const progress = (now - pulse.start) / PULSE_MS
+  private drawPulse(pulse: ActivePulse, now: number) {
+    const progress = (now - pulse.start) / pulse.durationMs
     if (progress < 0 || progress > 1) return
     const edge = this.edges.find((candidate) => candidate.id === pulse.edgeId)
     const curve = edge && this.curve(edge)

@@ -8,6 +8,7 @@ use chepio_lens_conventions::redaction::Redactor;
 use crate::domain::event::LensEvent;
 use crate::domain::graph::Changes;
 use crate::domain::linker::Link;
+use crate::domain::request::HopRecord;
 use crate::domain::span::{Span, TraceId};
 use crate::domain::time::Now;
 // Ports
@@ -153,9 +154,15 @@ fn record(
     touched: &mut BTreeSet<TraceId>,
 ) {
     if let Some(key) = state.graph.record(link, now, changes) {
-        state
-            .store
-            .record_edge(link.trace_id, link.start_ns, key.id());
+        state.store.record_hop(
+            link.trace_id,
+            HopRecord {
+                edge_id: key.id(),
+                client_span_id: link.client_span_id,
+                start_ns: link.start_ns,
+                duration_ns: link.duration_ns,
+            },
+        );
         touched.insert(link.trace_id);
     }
 }

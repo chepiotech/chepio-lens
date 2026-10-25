@@ -5,7 +5,7 @@
 use std::collections::{HashMap, VecDeque};
 
 // Domain
-use crate::domain::request::RequestSummary;
+use crate::domain::request::{HopRecord, RequestSummary};
 use crate::domain::span::{Span, TraceId};
 // Ports
 use crate::ports::{Inserted, StoreStats, TraceStore};
@@ -20,7 +20,7 @@ pub struct StoreLimits {
 #[derive(Default)]
 struct StoredRequest {
     spans: Vec<Span>,
-    edges: Vec<(u64, String)>,
+    hops: Vec<HopRecord>,
     bytes: usize,
     dropped_spans: u64,
 }
@@ -80,12 +80,12 @@ impl TraceStore for MemoryStore {
         Inserted::Stored
     }
 
-    fn record_edge(&mut self, trace_id: TraceId, start_ns: u64, edge_id: String) {
+    fn record_hop(&mut self, trace_id: TraceId, hop: HopRecord) {
         if let Some(request) = self.requests.get_mut(&trace_id) {
-            let size = edge_id.len() + 8;
+            let size = hop.edge_id.len() + 24;
             request.bytes += size;
             self.bytes += size;
-            request.edges.push((start_ns, edge_id));
+            request.hops.push(hop);
             self.evict_over_bounds();
         }
     }
@@ -96,7 +96,7 @@ impl TraceStore for MemoryStore {
             RequestSummary::from_spans(
                 *trace_id,
                 &request.spans,
-                &request.edges,
+                &request.hops,
                 request.dropped_spans,
             )
         })
@@ -184,14 +184,21 @@ mod tests {
     }
 
     #[test]
-    fn edges_of_evicted_requests_are_ignored_and_clear_empties_the_store() {
+    fn hops_of_evicted_requests_are_ignored_and_clear_empties_the_store() {
         let mut store = MemoryStore::new(ROOMY);
-        store.record_edge(TraceId([9; 16]), 0, "svc:a->svc:b".into());
+        let hop = |client: u8| HopRecord {
+            edge_id: "svc:a->svc:b".into(),
+            client_span_id: SpanId([client; 8]),
+            start_ns: 5,
+            duration_ns: 1,
+        };
+        store.record_hop(TraceId([9; 16]), hop(1));
         assert_eq!(store.stats().bytes, 0);
         store.insert(span_in(1, 1));
-        store.record_edge(TraceId([1; 16]), 5, "svc:a->svc:b".into());
+        store.record_hop(TraceId([1; 16]), hop(1));
+        let hops = store.summary(&TraceId([1; 16])).unwrap().hops;
         assert_eq!(
-            store.summary(&TraceId([1; 16])).unwrap().edges,
+            hops.iter().map(|hop| hop.edge.as_str()).collect::<Vec<_>>(),
             ["svc:a->svc:b"]
         );
         store.clear();

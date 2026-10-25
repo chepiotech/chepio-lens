@@ -84,8 +84,20 @@ pub struct RequestView {
     pub span_count: usize,
     #[ts(type = "number")]
     pub dropped_spans: u64,
-    /// Edge ids in the order the request touched them.
-    pub edges: Vec<String>,
+    /// A span without a parent has arrived: the request's entry point is known, later batches are unlikely.
+    pub has_root: bool,
+    /// The edges the request touched, placed on its timeline; the UI animates them.
+    pub hops: Vec<HopView>,
+}
+
+/// One edge of a request: when the call started relative to the request (call-tree order, never mixing clocks of
+/// different processes) and how long the caller saw it take.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct HopView {
+    pub edge: String,
+    pub start_offset_ms: f64,
+    pub duration_ms: f64,
 }
 
 /// SSE event names on `GET /api/events`: `node` → `NodeView`, `edge` → `EdgeView`, `request` → `RequestView`,
@@ -209,7 +221,16 @@ impl From<&RequestSummary> for RequestView {
             error: request.error,
             span_count: request.span_count,
             dropped_spans: request.dropped_spans,
-            edges: request.edges.clone(),
+            has_root: request.has_root,
+            hops: request
+                .hops
+                .iter()
+                .map(|hop| HopView {
+                    edge: hop.edge.clone(),
+                    start_offset_ms: ms(hop.start_offset_ns),
+                    duration_ms: ms(hop.duration_ns),
+                })
+                .collect(),
         }
     }
 }

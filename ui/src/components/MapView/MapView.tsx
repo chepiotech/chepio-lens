@@ -4,10 +4,11 @@ import { type Ref, useEffect, useImperativeHandle, useRef } from 'react'
 import type { GraphState } from '../../map/graphState'
 // Utils
 import { MapRenderer, type Selection } from '../../map/MapRenderer'
+import type { Pulse } from '../../map/requestPulses'
 // Styles
 import './MapView.css'
 
-export type MapHandle = { pulse: (edgeIds: string[]) => void }
+export type MapHandle = { pulse: (pulses: Pulse[]) => void }
 
 type Props = {
   ref?: Ref<MapHandle>
@@ -40,7 +41,7 @@ function MapView({ ref, graph, selection, onSelect }: Props) {
     rendererRef.current?.setSelection(selection)
   }, [selection])
 
-  useImperativeHandle(ref, () => ({ pulse: (edgeIds) => rendererRef.current?.pulse(edgeIds) }), [])
+  useImperativeHandle(ref, () => ({ pulse: (pulses) => rendererRef.current?.pulse(pulses) }), [])
 
   return (
     <canvas

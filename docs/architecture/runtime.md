@@ -10,7 +10,11 @@ Status: design (2026-10-23). Numbers are starting defaults to be validated by th
    512 spans are queued.
 3. `POST /v1/traces` → body limit → decode (protobuf or JSON) → normalize names → redact → store → link and
    update graph → publish SSE events → respond `200`. All in one handler; no internal queue.
-4. The UI applies the SSE events and animates the request along its edges on the next animation frame.
+4. The UI applies `node` and `edge` events on the next animation frame, so counters update at once. A request's
+   spans come from several processes in separate batches, each producing a `request` event; the UI animates the
+   request once, 300 ms after its last event when its root span has arrived (`has_root`), else 1.2 s after it.
+   Hops are placed along the call tree: a hop called inside another hop's server span is offset from that server
+   span in its own clock, never by comparing clocks of different processes.
 
 Target: p95 ≤ 2 s from request end to the map on a local machine (`quality-attributes.md`).
 

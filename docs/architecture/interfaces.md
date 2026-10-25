@@ -112,7 +112,8 @@ CORS. JSON only. Internal contract: the UI and the collector ship in one binary,
 | `GET /healthz` | `200` when the collector is serving |
 
 SSE events: `node` (node created or changed), `edge` (edge stats changed), `request` (new or updated request summary
-with the ordered list of edges it touched, used for animation), `resync` (the client fell behind and must fetch
+with `has_root` and `hops`: each edge it touched with its start offset and duration on the request's timeline,
+used for animation), `resync` (the client fell behind and must fetch
 `/api/graph` again).
 
 JSON shapes: `collector/src/types/api.rs`; the UI uses the TypeScript generated from them in `ui/src/api/generated/`

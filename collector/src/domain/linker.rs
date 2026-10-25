@@ -22,6 +22,8 @@ pub enum LinkTarget {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Link {
     pub trace_id: TraceId,
+    /// The calling (client) span; places the hop on the request's timeline.
+    pub client_span_id: SpanId,
     /// Start of the client span, used to order a request's edges.
     pub start_ns: u64,
     pub from: Service,
@@ -43,6 +45,7 @@ pub struct LinkerLimits {
 type Key = (TraceId, SpanId);
 
 struct PendingClient {
+    span_id: SpanId,
     service: Service,
     start_ns: u64,
     duration_ns: u64,
@@ -104,6 +107,7 @@ impl Linker {
         if let Some(db) = db_target(span) {
             return vec![Link {
                 trace_id: span.trace_id,
+                client_span_id: span.span_id,
                 start_ns: span.start_ns,
                 from: span.service.clone(),
                 to: LinkTarget::Database(db),
@@ -114,6 +118,7 @@ impl Linker {
         let key = (span.trace_id, span.span_id);
         if let Some(server) = self.orphans.remove(&key) {
             let client = PendingClient {
+                span_id: span.span_id,
                 service: span.service.clone(),
                 start_ns: span.start_ns,
                 duration_ns: span.duration_ns(),
@@ -133,6 +138,7 @@ impl Linker {
         self.pending.insert(
             key,
             PendingClient {
+                span_id: span.span_id,
                 service: span.service.clone(),
                 start_ns: span.start_ns,
                 duration_ns: span.duration_ns(),
@@ -261,6 +267,7 @@ fn http_link(
 ) -> Option<Link> {
     (client.service.name != server.name).then_some(Link {
         trace_id,
+        client_span_id: client.span_id,
         start_ns: client.start_ns,
         from: client.service,
         to: LinkTarget::Service(server),
@@ -272,6 +279,7 @@ fn http_link(
 fn external_link(trace_id: TraceId, client: PendingClient) -> Link {
     Link {
         trace_id,
+        client_span_id: client.span_id,
         start_ns: client.start_ns,
         from: client.service,
         to: LinkTarget::External(client.target),

@@ -6,7 +6,7 @@ use std::pin::Pin;
 use futures_util::Stream;
 // Domain
 use crate::domain::event::LensEvent;
-use crate::domain::request::RequestSummary;
+use crate::domain::request::{HopRecord, RequestSummary};
 use crate::domain::span::{Span, TraceId};
 // Types
 use crate::types::{FeedItem, OtlpEncoding};
@@ -30,7 +30,7 @@ pub struct StoreStats {
 pub trait TraceStore: Send {
     fn insert(&mut self, span: Span) -> Inserted;
     /// Remembers that the request touched an edge; ignored when the request was already evicted.
-    fn record_edge(&mut self, trace_id: TraceId, start_ns: u64, edge_id: String);
+    fn record_hop(&mut self, trace_id: TraceId, hop: HopRecord);
     fn summary(&self, trace_id: &TraceId) -> Option<RequestSummary>;
     fn clear(&mut self);
     fn stats(&self) -> StoreStats;
