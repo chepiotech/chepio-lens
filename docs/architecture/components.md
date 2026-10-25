@@ -1,7 +1,7 @@
 # Components
 
 Status (2026-10-25): `conventions`, the collector core (ingest, graph, store, UI API, SSE, embedded UI), both SDKs
-with header and body capture, the UI map, filtered logs, request inspector and demo app are implemented.
+with header/body capture and application logs, the UI map, filtered logs, request inspector and demo app are implemented.
 Scope of this view: the MVP — frontend, backend and database of one instrumented app. Docker and Kubernetes layers
 are planned later and are not described here.
 
@@ -13,7 +13,7 @@ are planned later and are not described here.
 │ Browser app + web SDK        │──┐
 ├──────────────────────────────┤  │ OTLP/HTTP        ┌──────────────────────┐   HTTP + SSE   ┌───────────┐
 │ Backend + Rust SDK           │──┴────────────────▶ │ Collector            │ ─────────────▶ │ UI (map,  │
-│   └── SQL ──▶ Postgres       │   spans + payloads  │ ingest, graph, store │                │ inspector)│
+│   └── SQL ──▶ Postgres       │   spans + logs  │ ingest, graph, store │                │ inspector)│
 └──────────────────────────────┘                     └──────────────────────┘                └───────────┘
                                                                                       ▲
                                                                           Developer ──┘ (browser)
@@ -26,11 +26,11 @@ backend SDK emits.
 
 | Component | Planned path | Language | Responsibility |
 |---|---|---|---|
-| Collector | `collector/` (crate `chepio-lens-collector`, binary `chepio-lens`) | Rust | Receives OTLP, normalizes and redacts spans, derives the graph, keeps a bounded in-memory store, serves the UI API, SSE and the embedded UI |
+| Collector | `collector/` (crate `chepio-lens-collector`, binary `chepio-lens`) | Rust | Receives OTLP, normalizes and redacts spans and logs, derives the graph, keeps a bounded in-memory store, serves the UI API, SSE and the embedded UI |
 | Conventions | `conventions/` (crate `chepio-lens-conventions`) | Rust | Attribute keys, legacy-to-stable name mapping, redaction rules; shared test vectors in `conventions/testdata/` |
 | UI | `ui/` | TypeScript, React, Vite, Canvas 2D | Map page and request inspector; built into static files that the collector embeds |
-| Rust SDK | `sdk/rust/` (crate `chepio-lens-sdk`) | Rust | One-call setup of OpenTelemetry for axum + sqlx backends; HTTP server and database spans; payload capture with redaction |
-| Web SDK | `sdk/web/` (package `chepio-lens-web`) | TypeScript | One-call setup of OpenTelemetry in the browser; fetch spans; `traceparent` propagation; payload capture with redaction |
+| Rust SDK | `sdk/rust/` (crate `chepio-lens-sdk`) | Rust | One-call setup of OpenTelemetry for axum + sqlx backends; HTTP server and database spans; payload capture and app logs with redaction |
+| Web SDK | `sdk/web/` (package `chepio-lens-web`) | TypeScript | One-call setup of OpenTelemetry in the browser; fetch spans; `traceparent` propagation; redacted payloads and console logs; browser actions |
 | Demo app | `demo/` (`demo/web`, `demo/api`, `demo/compose.yaml`) | React + Vite, Rust (axum, sqlx), Postgres | The reference app to instrument; used by end-to-end tests |
 
 Workspaces: one Cargo workspace (collector, conventions, Rust SDK, demo API) and one pnpm workspace (UI, web SDK,
@@ -59,11 +59,11 @@ Layers follow the global import groups; arrows show allowed imports.
 
 | Layer | Holds | May import |
 |---|---|---|
-| `domain/` | normalized span, request, node, edge, graph derivation, link window logic; no I/O | conventions |
+| `domain/` | normalized span, log record, request, node, edge, graph derivation, link window logic; no I/O | conventions |
 | `ports/` | `TraceStore`, `EventPublisher` traits | domain |
 | `services/` | `Ingest` (normalize → redact → store → derive graph → publish), `Query` (graph, requests) | domain, ports |
 | `repositories/` | bounded in-memory `TraceStore` (ADR-0005) | domain, ports |
-| `adapters/` | OTLP decoding (protobuf and JSON) into domain spans; SSE broadcaster | domain, ports |
+| `adapters/` | OTLP decoding (protobuf and JSON) into domain spans and log records; SSE broadcaster | domain, ports |
 | `handlers/` | OTLP/HTTP endpoint, UI API, SSE endpoint, static UI | services, domain |
 | `types/` | Wire types shared by layers: UI API shapes exported to TypeScript (ADR-0009), OTLP encoding, SSE messages | domain |
 | `app.rs` | Composition root: configuration from the environment, wiring of all layers | everything |
@@ -89,3 +89,7 @@ Layers follow the global import groups; arrows show allowed imports.
   renders span offsets as received, flags children starting before their parents, and shows headers, bodies, SQL,
   status and events as React text. Valid JSON bodies are formatted; truncation, redaction and invalid JSON are
   explicit. Unknown/evicted requests and failed loads have recoverable states.
+
+App log serialization belongs to the SDKs; collector log normalization/redaction belongs to its ingest service.
+The UI uses nullable log context directly and fetches request details only when a trace id exists. ADR-0011 records
+the synchronous browser action boundary; no new dependency between SDKs and collector was introduced.

@@ -7,8 +7,8 @@ the main risk: they carry passwords, tokens and personal data (ADR-0004).
 
 | Boundary | Data crossing it | Protection in the MVP |
 |---|---|---|
-| Instrumented app → collector (OTLP ingest) | Spans with headers, bodies, SQL | Redaction in the SDK before export; collector bound to localhost; CORS allow-list for browsers |
-| Collector → UI (UI API, SSE) | Redacted spans, graph | Bound to localhost; same origin; no CORS |
+| Instrumented app → collector (OTLP ingest) | Spans, app logs and actions with headers, bodies, SQL | Redaction in the SDK before export; collector bound to localhost; CORS allow-list for browsers |
+| Collector → UI (UI API, SSE) | Redacted spans, logs, graph | Bound to localhost; same origin; no CORS |
 | Span content → UI rendering | Attacker-controllable strings (bodies, headers, URLs, SQL) | Rendered as text only; strict Content Security Policy |
 | Collector → disk and logs | — | Nothing is persisted; logs never contain attribute values |
 
@@ -21,9 +21,9 @@ the main risk: they carry passwords, tokens and personal data (ADR-0004).
 - **SDKs are off by default.** Without `CHEPIO_LENS_ENDPOINT` (or an empty endpoint in the browser) the SDK is a
   no-op. The Rust SDK is added behind a cargo feature and the web SDK through a dev-only dynamic import, so
   production builds do not contain it (checked for the demo web by `demo/web/src/main.test.ts`).
-- **CORS on ingest.** Browsers may post spans only from the exact origins in `CHEPIO_LENS_CORS_ORIGINS` (default:
+- **CORS on ingest.** Browsers may post telemetry only from the exact origins in `CHEPIO_LENS_CORS_ORIGINS` (default:
   the demo web on `localhost` and `127.0.0.1`); there is no wildcard. Any other `Origin` gets `403` before the body
-  is read, so an arbitrary web page open in the developer's browser cannot inject spans into the map.
+  is read, so an arbitrary web page open in the developer's browser cannot inject telemetry into the collector.
 - **Redaction cannot be switched off in the MVP.** Configuration can add keys to the defaults, not remove them.
 - **UI rendering.** No `innerHTML`, no `dangerouslySetInnerHTML`, no `eval` of payload content. The canvas draws
   text with `fillText`. Every response on the UI listener sends `Content-Security-Policy: default-src 'self'; connect-src 'self'` and
@@ -58,9 +58,22 @@ masked value is the string `[REDACTED]`.
 - A body that is not valid JSON despite its content type is captured as text without key-based masking and marked in
   the inspector.
 
+### App logs and actions
+
+Log attributes and structured OTLP bodies are masked recursively by key before formatting or shortening; HTTP
+header/body/URL attributes use the same rules as spans. The Rust bridge masks named tracing fields and valid JSON
+text fields; browser console arguments use a bounded serializer that masks keys without invoking getters or
+`toJSON`. Already-formatted free text is not parsed as arbitrary object/debug syntax. Collector-side truncation
+marks the record; shortened data cannot undo masking.
+
+Browser action labels omit form values; navigation omits query strings and fragments. Accessible labels and button
+text are still free text and should not contain secrets. The original browser console output is unchanged and can
+contain values the application chose to print; redaction applies to exported telemetry. Collector diagnostics never
+repeat accepted or rejected log payloads. Log details are React text, including strings that resemble HTML.
+
 ## Known gaps (accepted for the MVP)
 
 - Secrets inside free text (e.g. a token inside a log message body or an `exception` event's message) are not
   detected.
 - SQL with values inlined into the query text (no placeholders) shows those values.
-- No integrity or authenticity of ingested spans: any local process can send fake spans.
+- No integrity or authenticity of ingested telemetry: any local process can send fake spans or logs.

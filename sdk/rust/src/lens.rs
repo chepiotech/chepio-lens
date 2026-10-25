@@ -4,15 +4,20 @@ use std::time::Duration;
 use std::{env, fmt, thread};
 
 use opentelemetry::KeyValue;
+use opentelemetry::logs::LoggerProvider as _;
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
+use opentelemetry_otlp::{LogExporter, Protocol, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::logs::{
+    BatchConfigBuilder as LogBatchConfigBuilder, BatchLogProcessor, SdkLoggerProvider,
+};
 use opentelemetry_sdk::trace::{
     BatchConfigBuilder, BatchSpanProcessor, SdkTracer, SdkTracerProvider,
     SpanExporter as SpanExporterTrait,
 };
 use tracing_subscriber::prelude::*;
 // Domain
+use crate::app_logs::AppLogs;
 use crate::capture::{CaptureConfig, DEFAULT_BODY_LIMIT};
 use crate::database::Database;
 use crate::http::HttpLayer;
@@ -136,6 +141,7 @@ struct Inner {
     tracer: SdkTracer,
     capture: Arc<CaptureConfig>,
     database: Option<Database>,
+    logs: Option<SdkLoggerProvider>,
 }
 
 /// Reads `CHEPIO_LENS_ENDPOINT` and the other `CHEPIO_LENS_*` settings; without an endpoint the SDK does nothing.
@@ -166,7 +172,29 @@ pub fn init_with(config: Config) -> Result<Lens, InitError> {
         .with_span_processor(processor)
         .with_resource(resource(&config.service_name))
         .build();
-    Ok(Lens::from_provider(provider, config.capture()))
+    let log_exporter = LogExporter::builder()
+        .with_http()
+        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint(format!("{}/v1/logs", endpoint.trim_end_matches('/')))
+        .with_timeout(EXPORT_TIMEOUT)
+        .build()
+        .map_err(|error| InitError(format!("cannot create the OTLP log exporter: {error}")))?;
+    let log_processor = BatchLogProcessor::builder(log_exporter)
+        .with_batch_config(
+            LogBatchConfigBuilder::default()
+                .with_scheduled_delay(EXPORT_INTERVAL)
+                .with_max_export_batch_size(EXPORT_BATCH_SPANS)
+                .with_max_queue_size(EXPORT_QUEUE_SPANS)
+                .build(),
+        )
+        .build();
+    let logs = SdkLoggerProvider::builder()
+        .with_log_processor(log_processor)
+        .with_resource(resource(&config.service_name))
+        .build();
+    let mut lens = Lens::from_provider(provider, config.capture());
+    Arc::make_mut(lens.inner.as_mut().unwrap()).logs = Some(logs);
+    Ok(lens)
 }
 
 fn resource(service_name: &str) -> Resource {
@@ -190,6 +218,7 @@ impl Lens {
                 tracer,
                 capture,
                 database: None,
+                logs: None,
             })),
         }
     }
@@ -242,12 +271,17 @@ impl Lens {
         )
     }
 
-    /// Tracing layer that turns sqlx query events into database client spans. Add it to the app's subscriber.
+    /// Tracing layer for sqlx query spans and redacted app logs with current trace context. Add it to the app's subscriber.
     pub fn tracing_layer(&self) -> SqlxEventsLayer {
         SqlxEventsLayer::new(
             self.inner
                 .as_ref()
                 .map(|inner| (inner.tracer.clone(), inner.database.clone())),
+            self.inner.as_ref().and_then(|inner| {
+                inner.logs.as_ref().map(|provider| {
+                    AppLogs::new(provider.logger("chepio-lens-sdk"), inner.capture.clone())
+                })
+            }),
         )
     }
 
@@ -267,11 +301,20 @@ impl Lens {
             })
     }
 
-    /// Flushes pending spans, waiting at most 2 s. Runs on its own thread, so it is safe inside async code.
+    /// Flushes pending spans and logs, sharing a 2 s shutdown budget. Runs on its own thread, so it is safe inside async code.
     pub fn shutdown(&self) {
         if let Some(inner) = &self.inner {
             let provider = inner.provider.clone();
-            let _ = thread::spawn(move || provider.shutdown_with_timeout(SHUTDOWN_TIMEOUT)).join();
+            let logs = inner.logs.clone();
+            let started = std::time::Instant::now();
+            let _ = thread::spawn(move || {
+                let _ = provider.shutdown_with_timeout(SHUTDOWN_TIMEOUT);
+                if let Some(logs) = logs {
+                    let _ = logs
+                        .shutdown_with_timeout(SHUTDOWN_TIMEOUT.saturating_sub(started.elapsed()));
+                }
+            })
+            .join();
         }
     }
 }

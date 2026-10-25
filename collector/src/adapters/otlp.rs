@@ -19,7 +19,7 @@ use crate::domain::span::{
     AttrValue, Attributes, Service, Span, SpanEvent, SpanId, SpanKind, Status, TraceId,
 };
 // Ports
-use crate::ports::{DecodedBatch, OtlpCodec};
+use crate::ports::{DecodedBatch, DecodedLogs, OtlpCodec};
 // Types
 use crate::types::OtlpEncoding;
 // Consts
@@ -105,7 +105,7 @@ impl ProtoCodec {
     }
 
     /// Stable names win over legacy ones; legacy `http.target` fills `url.path` and `url.query` when they are absent.
-    fn normalize(&self, attributes: Vec<KeyValue>) -> (Attributes, Vec<String>) {
+    pub(crate) fn normalize(&self, attributes: Vec<KeyValue>) -> (Attributes, Vec<String>) {
         let mut stable = Attributes::new();
         let mut renamed = Vec::new();
         let mut target = None;
@@ -150,7 +150,7 @@ impl ProtoCodec {
         (stable, truncated)
     }
 
-    fn convert(&self, value: AnyValue) -> Option<AttrValue> {
+    pub(crate) fn convert(&self, value: AnyValue) -> Option<AttrValue> {
         Some(match value.value? {
             any_value::Value::StringValue(value) => AttrValue::Str(value),
             any_value::Value::BoolValue(value) => AttrValue::Bool(value),
@@ -163,12 +163,11 @@ impl ProtoCodec {
                     .filter_map(|item| self.convert(item))
                     .collect(),
             ),
-            any_value::Value::KvlistValue(list) => AttrValue::Str(
+            any_value::Value::KvlistValue(list) => AttrValue::Map(
                 list.values
                     .into_iter()
-                    .map(|kv| format!("{}={:?}", kv.key, kv.value.and_then(|v| v.value)))
-                    .collect::<Vec<_>>()
-                    .join(", "),
+                    .filter_map(|kv| Some((kv.key, self.convert(kv.value?)?)))
+                    .collect(),
             ),
             any_value::Value::BytesValue(bytes) => {
                 AttrValue::Str(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
@@ -186,7 +185,15 @@ impl ProtoCodec {
                     end -= 1;
                 }
                 text.truncate(end);
+                text.shrink_to_fit();
                 true
+            }
+            AttrValue::Map(items) => {
+                let mut cut = false;
+                for item in items.values_mut() {
+                    cut |= self.truncate(item);
+                }
+                cut
             }
             // Every item must be cut, so no short-circuiting `any`.
             AttrValue::Array(items) => {
@@ -223,6 +230,14 @@ fn status(status: Option<opentelemetry_proto::tonic::trace::v1::Status>) -> Stat
 }
 
 impl OtlpCodec for ProtoCodec {
+    fn decode_logs(&self, encoding: OtlpEncoding, body: &[u8]) -> Result<DecodedLogs, String> {
+        self.logs(encoding, body)
+    }
+
+    fn encode_logs_response(&self, encoding: OtlpEncoding, rejected: u64) -> Vec<u8> {
+        super::otlp_logs::response(encoding, rejected)
+    }
+
     fn decode(&self, encoding: OtlpEncoding, body: &[u8]) -> Result<DecodedBatch, String> {
         let request = match encoding {
             OtlpEncoding::Protobuf => {

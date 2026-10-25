@@ -64,10 +64,10 @@ function LogsPanel({ graph, filters, onFilters, logs, onInspect, visible }: Prop
           </button>)}
         </fieldset>
         <label className="logs-panel__search">Search logs
-          <input type="search" value={filters.text} placeholder="Request, SQL, service or trace ID" onChange={(event) => patch({ text: event.target.value })} />
+          <input type="search" value={filters.text} placeholder="Message, request, SQL or trace ID" onChange={(event) => patch({ text: event.target.value })} />
         </label>
         <details className="logs-panel__advanced" open={showFilters} onToggle={(event) => setShowFilters(event.currentTarget.open)}>
-          <summary>More filters{[filters.node, filters.edge, filters.status].filter(Boolean).length > 0 ? ' · active' : ''}</summary>
+          <summary>More filters{[filters.node, filters.edge, filters.status, filters.level, filters.kind].filter(Boolean).length > 0 ? ' · active' : ''}</summary>
           <div className="logs-panel__filter-grid">
           <label>Node<select value={filters.node} onChange={(event) => patch({ node: event.target.value })}>
             <option value="">All nodes</option>
@@ -79,6 +79,12 @@ function LogsPanel({ graph, filters, onFilters, logs, onInspect, visible }: Prop
           </select></label>
           <label>Status<select value={filters.status} onChange={(event) => patch({ status: event.target.value as LogFilters['status'] })}>
             <option value="">Any status</option><option value="ok">Success</option><option value="error">Error</option>
+          </select></label>
+          <label>Level<select value={filters.level} onChange={(event) => patch({ level: event.target.value as LogFilters['level'] })}>
+            <option value="">All levels</option>{['trace', 'debug', 'info', 'warn', 'error', 'fatal'].map((level) => <option value={level} key={level}>{level}</option>)}
+          </select></label>
+          <label>Kind<select value={filters.kind} onChange={(event) => patch({ kind: event.target.value as LogFilters['kind'] })}>
+            <option value="">All activity</option>{['log', 'action', 'request', 'query', 'call', 'span'].map((kind) => <option value={kind} key={kind}>{kind}</option>)}
           </select></label>
           <button type="button" className="logs-panel__clear" onClick={() => onFilters(DEFAULT_FILTERS)}>Clear filters</button>
           </div>
@@ -100,7 +106,7 @@ function LogsPanel({ graph, filters, onFilters, logs, onInspect, visible }: Prop
         {logs.before && <button className="logs-panel__older" type="button" disabled={logs.loading} onClick={loadOlder}>
           {logs.loading ? 'Loading…' : 'Load earlier lines'}
         </button>}
-        {!logs.entries.length && <p className="logs-panel__empty">{logs.loading ? 'Loading logs…' : filters.text || filters.node || filters.edge || filters.status || filters.layers.length < 3
+        {!logs.entries.length && <p className="logs-panel__empty">{logs.loading ? 'Loading logs…' : filters.text || filters.node || filters.edge || filters.status || filters.level || filters.kind || filters.layers.length < 3
           ? 'No lines match these filters.' : 'No activity yet. Send a request from your app.'}</p>}
         <ol className="logs-panel__entries" aria-label="Log entries">
           {logs.entries.map((entry) => <li key={entry.id} data-log-id={entry.id}>
@@ -108,8 +114,8 @@ function LogsPanel({ graph, filters, onFilters, logs, onInspect, visible }: Prop
               <span className="logs-panel__entry-meta"><time>{logTime(entry.time)}</time>
                 <span className={`logs-panel__tag logs-panel__tag--${entry.layer}`}>{entry.layer}</span>
                 <span className="logs-panel__service">{entry.service}</span>
-                <span className="logs-panel__status">{entry.status_code ?? (entry.error ? 'error' : entry.kind)}</span>
-                <span>{formatMs(entry.duration_ms)}</span>
+                <span className="logs-panel__status">{entry.status_code ?? entry.level ?? (entry.error ? 'error' : entry.kind)}</span>
+                <span>{entry.duration_ms === null ? entry.kind : formatMs(entry.duration_ms)}</span>
               </span>
               <span className="logs-panel__text">{entry.text}</span>
             </button>

@@ -14,3 +14,4 @@ One decision per file. An accepted decision is never edited: a new ADR supersede
 | [ADR-0008](ADR-0008-sqlx-query-events-as-db-spans.md) | The Rust SDK turns sqlx query events into database client spans | Accepted |
 | [ADR-0009](ADR-0009-ui-api-types-from-rust.md) | TypeScript types for the UI API are generated from the collector's Rust types | Accepted |
 | [ADR-0010](ADR-0010-no-sql-parameter-values.md) | SQL parameter values are not captured | Accepted |
+| [ADR-0011](ADR-0011-app-logs-and-browser-actions.md) | OTLP app logs and synchronous browser action correlation | Accepted |

@@ -11,7 +11,8 @@ use axum::response::{IntoResponse, Response};
 use futures_util::StreamExt;
 use serde::Deserialize;
 // Domain
-use crate::domain::log::{Layer, LogQuery, StatusFilter};
+use crate::domain::log::{Layer, LogKind, LogQuery, StatusFilter};
+use crate::domain::log_record::LogLevel;
 use crate::domain::span::TraceId;
 // Handlers
 use super::AppState;
@@ -62,6 +63,8 @@ pub(super) struct LogParams {
     edge: Option<String>,
     /// `ok` or `error`.
     status: Option<String>,
+    level: Option<String>,
+    kind: Option<String>,
     q: Option<String>,
     limit: Option<usize>,
     /// An entry id from an earlier page.
@@ -91,6 +94,30 @@ impl LogParams {
             Some("error") => Some(StatusFilter::Error),
             Some(other) => return Err(format!("unknown status {other:?}; use ok or error")),
         };
+        let levels = self
+            .level
+            .iter()
+            .flat_map(|value| value.split(','))
+            .filter(|v| !v.is_empty())
+            .map(|value| {
+                LogLevel::parse(value.trim()).ok_or_else(|| "unknown log level".to_owned())
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let kinds = self
+            .kind
+            .iter()
+            .flat_map(|value| value.split(','))
+            .filter(|v| !v.is_empty())
+            .map(|value| match value.trim() {
+                "log" => Ok(LogKind::Log),
+                "action" => Ok(LogKind::Action),
+                "request" => Ok(LogKind::Request),
+                "query" => Ok(LogKind::Query),
+                "call" => Ok(LogKind::Call),
+                "span" => Ok(LogKind::Span),
+                _ => Err("unknown log kind".to_owned()),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let before = match self.before.as_deref() {
             None | Some("") => None,
             Some(text) => Some(
@@ -107,6 +134,8 @@ impl LogParams {
             node: some(self.node),
             edge: some(self.edge),
             status,
+            levels,
+            kinds,
             text: some(self.q),
             before,
             limit: self

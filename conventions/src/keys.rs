@@ -40,3 +40,8 @@ pub const LENS_REDACTION_COUNT: &str = "lens.redaction.count";
 /// Resource attribute overriding the node kind: `frontend` or `service`.
 pub const LENS_NODE_KIND: &str = "lens.node.kind";
 pub const LENS_SDK_VERSION: &str = "lens.sdk.version";
+
+/// Log record kind: `action` for browser user actions; all other records are app logs.
+pub const LENS_LOG_KIND: &str = "lens.log.kind";
+/// Log body or attributes were shortened before export.
+pub const LENS_LOG_TRUNCATED: &str = "lens.log.truncated";

@@ -8,6 +8,7 @@ use chepio_lens_conventions::keys::{
 };
 use chepio_lens_conventions::redaction::{REDACTED, Redacted, Redactor};
 // Domain
+use crate::domain::log_record::LogRecord;
 use crate::domain::span::{AttrValue, Attributes, Span};
 
 const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
@@ -124,6 +125,63 @@ fn map_strings(value: &mut AttrValue, redact: &dyn Fn(&str) -> Redacted) -> usiz
         AttrValue::Array(items) => items.iter_mut().map(|item| map_strings(item, redact)).sum(),
         _ => 0,
     }
+}
+
+/// Log attributes and structured bodies are masked recursively before formatting or shortening.
+pub(crate) fn redact_log(record: &mut LogRecord, redactor: &Redactor) {
+    fn mask(value: &mut AttrValue, redactor: &Redactor) -> usize {
+        match value {
+            AttrValue::Map(items) => mask_fields(items, redactor),
+            AttrValue::Array(items) => items.iter_mut().map(|item| mask(item, redactor)).sum(),
+            _ => 0,
+        }
+    }
+    fn mask_fields(fields: &mut Attributes, redactor: &Redactor) -> usize {
+        fields
+            .iter_mut()
+            .map(|(key, value)| {
+                if redactor.is_sensitive_key(key) {
+                    let count = usize::from(value.as_str() != Some(REDACTED));
+                    *value = AttrValue::Str(REDACTED.to_owned());
+                    count
+                } else if key == URL_FULL {
+                    map_strings(value, &|text| redactor.redact_url(text))
+                } else {
+                    mask(value, redactor)
+                }
+            })
+            .sum()
+    }
+    let truncated = if record.truncated {
+        vec![
+            LENS_HTTP_REQUEST_BODY.to_owned(),
+            LENS_HTTP_RESPONSE_BODY.to_owned(),
+        ]
+    } else {
+        Vec::new()
+    };
+    let forms = form_content_types(&record.attributes, (false, false));
+    let count = redact_attributes(&mut record.attributes, &truncated, redactor, forms)
+        + mask_fields(&mut record.attributes, redactor)
+        + mask(&mut record.body, redactor);
+    let previous = record
+        .attributes
+        .get(LENS_REDACTION_COUNT)
+        .and_then(AttrValue::as_i64)
+        .unwrap_or(0);
+    if count > 0 {
+        record.attributes.insert(
+            LENS_REDACTION_COUNT.to_owned(),
+            AttrValue::Int(previous.saturating_add(count as i64)),
+        );
+    }
+    record.truncated |= matches!(
+        record
+            .attributes
+            .get(chepio_lens_conventions::keys::LENS_LOG_TRUNCATED),
+        Some(AttrValue::Bool(true))
+    );
+    record.bound(crate::consts::MAX_LOG_RECORD_BYTES);
 }
 
 #[cfg(test)]

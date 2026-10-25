@@ -23,6 +23,18 @@ pub(super) async fn traces(
     headers: HeaderMap,
     body: Body,
 ) -> Response {
+    receive(state, headers, body, false).await
+}
+
+pub(super) async fn logs(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    body: Body,
+) -> Response {
+    receive(state, headers, body, true).await
+}
+
+async fn receive(state: Arc<AppState>, headers: HeaderMap, body: Body, logs: bool) -> Response {
     let Some(encoding) = headers
         .get(CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
@@ -47,7 +59,14 @@ pub(super) async fn traces(
         Ok(Err(_)) => return StatusCode::BAD_REQUEST.into_response(),
         Ok(Ok(collected)) => collected.to_bytes(),
     };
-    match state.ingest.handle(encoding, &bytes, state.clock.now()) {
+    let reply = if logs {
+        state
+            .ingest
+            .handle_logs(encoding, &bytes, state.clock.now())
+    } else {
+        state.ingest.handle(encoding, &bytes, state.clock.now())
+    };
+    match reply {
         IngestReply::Accepted { body } => {
             ([(CONTENT_TYPE, encoding.content_type())], body).into_response()
         }

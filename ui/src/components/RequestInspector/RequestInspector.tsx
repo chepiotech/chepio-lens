@@ -2,17 +2,19 @@
 import { useEffect, useMemo, useState } from 'react'
 // Components
 import SpanContent from './SpanContent'
+import LogContent from './LogContent'
 // Services
 import { fetchRequest } from '../../api/lensApi'
 // Types
 import type { RequestDetailView } from '../../api/generated/RequestDetailView'
+import type { LogEntryView } from '../../api/generated/LogEntryView'
 // Styles
 import './RequestInspector.css'
 // Utils
 import { clockSkew, spanDepth, spanError } from './requestDetails'
 import { formatMs } from '../../map/formatMs'
 
-export type RequestSelection = { traceId: string; spanId: string }
+export type RequestSelection = { traceId: string | null; spanId: string | null; log?: LogEntryView }
 type Props = { selection: RequestSelection; revision: number; onBack: () => void }
 
 function RequestInspector({ selection, revision, onBack }: Props) {
@@ -23,11 +25,13 @@ function RequestInspector({ selection, revision, onBack }: Props) {
   const [loading, setLoading] = useState(true)
   useEffect(() => { setSelectedSpan(selection.spanId) }, [selection.traceId, selection.spanId])
   useEffect(() => {
+    const traceId = selection.traceId
+    if (!traceId) { setDetail(null); setError(null); setLoading(false); return }
     const controller = new AbortController()
     setLoading(true)
     setError(null)
     const timer = setTimeout(() => {
-      void fetchRequest(selection.traceId, controller.signal).then((value) => {
+      void fetchRequest(traceId, controller.signal).then((value) => {
         if (!controller.signal.aborted) { setDetail(value); setLoading(false) }
       }, (reason: unknown) => {
         if (!controller.signal.aborted) {
@@ -44,7 +48,9 @@ function RequestInspector({ selection, revision, onBack }: Props) {
   const duration = Math.max(0.001, ...current?.spans.map((item) => item.start_offset_ms + item.duration_ms) ?? [])
   return <section className="request-inspector" aria-label="Request inspector" aria-busy={loading}>
     <div className="request-inspector__toolbar"><button type="button" onClick={onBack}>← Back to logs</button>
-      <button type="button" onClick={() => setAttempt((value) => value + 1)} disabled={loading}>Refresh request</button></div>
+      <button type="button" onClick={() => setAttempt((value) => value + 1)} disabled={loading || !selection.traceId}>Refresh request</button></div>
+    {selection.log && <LogContent entry={selection.log} />}
+    {!selection.traceId && <p className="request-inspector__muted">This log has no request context.</p>}
     {error && <p className="request-inspector__notice" role="alert">{error}</p>}
     {!current && loading && <p className="request-inspector__muted">Loading request…</p>}
     {current && <>

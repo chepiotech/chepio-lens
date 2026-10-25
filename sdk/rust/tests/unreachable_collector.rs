@@ -12,6 +12,7 @@ use axum::http::{Request, StatusCode};
 use axum::routing::get;
 use chepio_lens_sdk::{Config, init_with};
 use tower::ServiceExt;
+use tracing_subscriber::prelude::*;
 
 /// Slowest request allowed: far above a local handler, far below any network timeout.
 const BUDGET: Duration = Duration::from_millis(50);
@@ -23,8 +24,17 @@ async fn serve_requests(endpoint: String) -> Duration {
         ..Config::default()
     })
     .unwrap();
+    let _subscriber = tracing_subscriber::registry()
+        .with(lens.tracing_layer())
+        .set_default();
     let app = Router::new()
-        .route("/", get(|| async { "ok" }))
+        .route(
+            "/",
+            get(|| async {
+                tracing::info!(route = "/", "request handled");
+                "ok"
+            }),
+        )
         .layer(lens.http_layer());
     let mut slowest = Duration::ZERO;
     // Enough requests to fill several export batches while the exporter fails or hangs.

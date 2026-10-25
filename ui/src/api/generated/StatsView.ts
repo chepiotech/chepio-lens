@@ -15,4 +15,4 @@ spans_dropped: number, batches_malformed: number,
 /**
  * Export requests refused with 503 because the ingest concurrency bound was reached.
  */
-batches_busy: number, requests_stored: number, requests_evicted: number, store_bytes: number, log_entries: number, pending_links: number, nodes: number, edges: number, nodes_dropped: number, edges_dropped: number, sse_clients: number, };
+batches_busy: number, requests_stored: number, requests_evicted: number, store_bytes: number, log_entries: number, log_bytes: number, logs_received: number, logs_rejected: number, logs_evicted: number, pending_links: number, nodes: number, edges: number, nodes_dropped: number, edges_dropped: number, sse_clients: number, };

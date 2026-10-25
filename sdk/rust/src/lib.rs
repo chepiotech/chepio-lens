@@ -13,6 +13,7 @@
 //! # Ok(()) }
 //! ```
 
+mod app_logs;
 mod capture;
 mod database;
 mod http;

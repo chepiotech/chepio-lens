@@ -7,7 +7,7 @@ import { DEFAULT_FILTERS, LOG_VIEW_LIMIT, logQuery, mergeLogEntries } from './lo
 
 const entry = (seq: number, time = '1792930000000000000'): LogEntryView => ({
   id: `${time}.${seq}`, time, trace_id: '1'.repeat(32), span_id: '1'.repeat(16), duration_ms: 1,
-  layer: 'frontend', kind: 'request', service: 'web', nodes: ['svc:web'], text: `GET /${seq}`, status_code: 200, error: false,
+  layer: 'frontend', kind: 'request', service: 'web', nodes: ['svc:web'], text: `GET /${seq}`, status_code: 200, error: false, level: null, record: null,
 })
 
 describe('log window', () => {
@@ -30,8 +30,8 @@ describe('log window', () => {
 
   it('encodes combined filters without confusing SQL and URL punctuation with query parameters', () => {
     const query = new URLSearchParams(logQuery({ ...DEFAULT_FILTERS, layers: ['frontend', 'database'], node: 'svc:web',
-      edge: 'svc:web->svc:api', status: 'error', text: ' x & y=1 ' }))
-    expect(Object.fromEntries(query)).toEqual({ layer: 'frontend,database', node: 'svc:web', edge: 'svc:web->svc:api', status: 'error', q: 'x & y=1' })
+      edge: 'svc:web->svc:api', status: 'error', level: 'error', kind: 'log', text: ' x & y=1 ' }))
+    expect(Object.fromEntries(query)).toEqual({ layer: 'frontend,database', node: 'svc:web', edge: 'svc:web->svc:api', status: 'error', level: 'error', kind: 'log', q: 'x & y=1' })
     expect(logQuery(DEFAULT_FILTERS)).toBe('')
   })
 })

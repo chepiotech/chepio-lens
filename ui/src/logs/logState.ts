@@ -1,11 +1,13 @@
 // Types
 import type { LayerView } from '../api/generated/LayerView'
 import type { LogEntryView } from '../api/generated/LogEntryView'
+import type { LogLevelView } from '../api/generated/LogLevelView'
+import type { LogKindView } from '../api/generated/LogKindView'
 
 export const LOG_VIEW_LIMIT = 2_000
 export const LAYERS: LayerView[] = ['frontend', 'backend', 'database']
-export type LogFilters = { layers: LayerView[]; node: string; edge: string; status: '' | 'ok' | 'error'; text: string }
-export const DEFAULT_FILTERS: LogFilters = { layers: LAYERS, node: '', edge: '', status: '', text: '' }
+export type LogFilters = { layers: LayerView[]; node: string; edge: string; status: '' | 'ok' | 'error'; level: '' | LogLevelView; kind: '' | LogKindView; text: string }
+export const DEFAULT_FILTERS: LogFilters = { layers: LAYERS, node: '', edge: '', status: '', level: '', kind: '', text: '' }
 
 export function logQuery(filters: LogFilters): string {
   const query = new URLSearchParams()
@@ -13,6 +15,8 @@ export function logQuery(filters: LogFilters): string {
   if (filters.node) query.set('node', filters.node)
   if (filters.edge) query.set('edge', filters.edge)
   if (filters.status) query.set('status', filters.status)
+  if (filters.level) query.set('level', filters.level)
+  if (filters.kind) query.set('kind', filters.kind)
   if (filters.text.trim()) query.set('q', filters.text.trim())
   return query.toString()
 }

@@ -1,4 +1,4 @@
-//! Turns sqlx `sqlx::query` tracing events into database client spans (ADR-0008).
+//! Turns sqlx query events into database client spans and other app events into redacted log records.
 
 // Core
 use std::time::{Duration, SystemTime};
@@ -10,6 +10,7 @@ use tracing::field::{Field, Visit};
 use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context as LayerContext, Layer};
 // Domain
+use crate::app_logs::AppLogs;
 use crate::database::Database;
 // Consts
 use chepio_lens_conventions::keys::{
@@ -21,14 +22,15 @@ const SQLX_QUERY_TARGET: &str = "sqlx::query";
 const UNKNOWN_SQL_SYSTEM: &str = "other_sql";
 const DB_RESPONSE_RETURNED_ROWS: &str = "db.response.returned_rows";
 
-/// No-op when the SDK has no endpoint.
+/// No-op when the SDK has no endpoint. The name is retained for source compatibility; also captures app logs.
 pub struct SqlxEventsLayer {
     inner: Option<(SdkTracer, Option<Database>)>,
+    logs: Option<AppLogs>,
 }
 
 impl SqlxEventsLayer {
-    pub(crate) fn new(inner: Option<(SdkTracer, Option<Database>)>) -> Self {
-        Self { inner }
+    pub(crate) fn new(inner: Option<(SdkTracer, Option<Database>)>, logs: Option<AppLogs>) -> Self {
+        Self { inner, logs }
     }
 }
 
@@ -81,6 +83,9 @@ impl<S: Subscriber> Layer<S> for SqlxEventsLayer {
             return;
         };
         if event.metadata().target() != SQLX_QUERY_TARGET {
+            if let Some(logs) = &self.logs {
+                logs.record(event);
+            }
             return;
         }
         let mut fields = QueryFields::default();

@@ -2,6 +2,8 @@
 import { context, propagation, trace } from '@opentelemetry/api'
 import { W3CTraceContextPropagator } from '@opentelemetry/core'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
+import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http'
+import { LoggerProvider, BatchLogRecordProcessor } from '@opentelemetry/sdk-logs'
 import { registerInstrumentations } from '@opentelemetry/instrumentation'
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch'
 import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources'
@@ -16,6 +18,8 @@ import { ATTR_SERVICE_NAME, ATTR_URL_FULL } from '@opentelemetry/semantic-conven
 // Domain
 import { type CaptureConfig, DEFAULT_BODY_LIMIT, captureRequest, captureResponse } from './capture'
 import { Redactor } from './redaction'
+// Services
+import { captureLogs } from './logCapture/logCapture'
 // Consts
 import { LENS_REDACTION_COUNT, LENS_SDK_VERSION, SDK_VERSION } from './consts'
 
@@ -43,7 +47,7 @@ export type LensOptions = {
 
 export type Lens = {
   readonly enabled: boolean
-  /** Stops tracing `fetch`, flushes pending spans and waits at most the export timeout. */
+  /** Stops capture, flushes pending spans and logs and waits at most the export timeout. */
   shutdown(): Promise<void>
 }
 
@@ -52,7 +56,7 @@ const DISABLED: Lens = { enabled: false, shutdown: async () => {} }
 let active: Lens | null = null
 
 /**
- * Starts tracing `fetch` calls and exporting them to the collector. A no-op without an endpoint. Never throws: an
+ * Starts tracing `fetch` calls and capturing console logs and browser actions. A no-op without an endpoint. Never throws: an
  * invalid endpoint prints one warning and disables the SDK, so the app keeps working (I1). A second call while the
  * SDK is running returns the running instance.
  */
@@ -95,15 +99,26 @@ export function initLens(options: LensOptions): Lens {
   propagation.setGlobalPropagator(new W3CTraceContextPropagator())
   // The instrumentation calls `requestHook` synchronously inside the instrumented `fetch`; the outer wrapper below
   // picks the span up there and clones the response before the app can consume it.
+  const logsUrl = new URL('v1/logs', endpoint.endsWith('/') ? endpoint : `${endpoint}/`).href
+  const logProvider = new LoggerProvider({
+    resource: defaultResource().merge(resourceFromAttributes({ [ATTR_SERVICE_NAME]: options.serviceName, [LENS_SDK_VERSION]: SDK_VERSION })),
+    processors: [new BatchLogRecordProcessor({
+      exporter: new OTLPLogExporter({ url: logsUrl, timeoutMillis: EXPORT_TIMEOUT_MS }),
+      scheduledDelayMillis: EXPORT_INTERVAL_MS, maxExportBatchSize: EXPORT_BATCH_SPANS,
+      maxQueueSize: EXPORT_QUEUE_SPANS, exportTimeoutMillis: EXPORT_TIMEOUT_MS,
+    })],
+  })
+  const logs = captureLogs(logProvider.getLogger('chepio-lens-web', SDK_VERSION), redactor)
   let handedOver: Span | undefined
   const unregister = registerInstrumentations({
     tracerProvider: provider,
     instrumentations: [
       new FetchInstrumentation({
-        ignoreUrls: [tracesUrl],
+        ignoreUrls: [tracesUrl, logsUrl],
         propagateTraceHeaderCorsUrls: options.propagateTo ?? [],
         requestHook: (span, request) => {
           handedOver = span as Span
+          guard(() => logs.link(span))
           guard(() => captureRequest(span, request, capture))
         },
       }),
@@ -134,8 +149,9 @@ export function initLens(options: LensOptions): Lens {
       active = null
       if (globalThis.fetch === withBodies) globalThis.fetch = instrumented
       unregister()
+      logs.stop()
       try {
-        await provider.shutdown()
+        await Promise.all([provider.shutdown(), logProvider.shutdown()])
       } finally {
         trace.disable()
         context.disable()

@@ -23,6 +23,8 @@ pub(crate) struct State {
 #[derive(Default)]
 pub(crate) struct Counters {
     pub(crate) spans_received: AtomicU64,
+    pub(crate) logs_received: AtomicU64,
+    pub(crate) logs_rejected: AtomicU64,
     pub(crate) spans_rejected: AtomicU64,
     pub(crate) batches_malformed: AtomicU64,
 }

@@ -30,6 +30,8 @@ pub const MAX_PENDING_CLIENTS: usize = 10_000;
 pub const MAX_ORPHAN_SERVERS: usize = 10_000;
 /// Lines in the logs panel's log (one per stored span); the oldest by time is dropped first.
 pub const MAX_LOG_ENTRIES: usize = 50_000;
+pub const MAX_LOG_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_LOG_RECORD_BYTES: usize = 16 * 1024;
 /// `GET /api/logs` page size: default and maximum.
 pub const LOG_PAGE_DEFAULT: usize = 100;
 pub const LOG_PAGE_MAX: usize = 500;

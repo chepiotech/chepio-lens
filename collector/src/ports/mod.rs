@@ -7,6 +7,7 @@ use futures_util::Stream;
 // Domain
 use crate::domain::event::LensEvent;
 use crate::domain::log::{LogEntry, LogPage, LogQuery};
+use crate::domain::log_record::LogRecord;
 use crate::domain::request::{HopRecord, RequestDetail, RequestSummary};
 use crate::domain::span::{Span, TraceId};
 // Types
@@ -27,11 +28,14 @@ pub struct StoreStats {
     pub evicted_requests: u64,
     pub dropped_spans: u64,
     pub log_entries: usize,
+    pub log_bytes: usize,
+    pub logs_evicted: u64,
 }
 
 /// Recent requests and their spans (ADR-0005). Bounded; the oldest request is evicted first.
 pub trait TraceStore: Send {
     fn insert(&mut self, span: Span) -> Inserted;
+    fn insert_log(&mut self, record: LogRecord) -> LogEntry;
     /// Remembers that the request touched an edge; ignored when the request was already evicted.
     fn record_hop(&mut self, trace_id: TraceId, hop: HopRecord);
     fn summary(&self, trace_id: &TraceId) -> Option<RequestSummary>;
@@ -50,7 +54,15 @@ pub struct DecodedBatch {
 }
 
 /// OTLP wire format: decodes export requests into normalized spans (I8) and encodes responses.
+#[derive(Debug, Default)]
+pub struct DecodedLogs {
+    pub records: Vec<LogRecord>,
+    pub rejected: u64,
+}
+
 pub trait OtlpCodec: Send + Sync {
+    fn decode_logs(&self, encoding: OtlpEncoding, body: &[u8]) -> Result<DecodedLogs, String>;
+    fn encode_logs_response(&self, encoding: OtlpEncoding, rejected: u64) -> Vec<u8>;
     fn decode(&self, encoding: OtlpEncoding, body: &[u8]) -> Result<DecodedBatch, String>;
     fn encode_response(
         &self,
