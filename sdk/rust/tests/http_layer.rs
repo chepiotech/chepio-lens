@@ -40,6 +40,10 @@ async fn server_span_joins_the_callers_trace_and_names_the_route() {
     let response = app(&lens).oneshot(request).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    // The server span ends once the response body has been sent.
+    axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let spans = exporter.get_finished_spans().unwrap();
     assert_eq!(spans.len(), 1);
     let span = &spans[0];
@@ -85,6 +89,7 @@ async fn without_an_endpoint_the_sdk_does_nothing() {
     let lens = init_with(Config {
         service_name: "demo-api".into(),
         endpoint: None,
+        ..Config::default()
     })
     .unwrap();
 

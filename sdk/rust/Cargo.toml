@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 axum = "0.8.9"
 chepio-lens-conventions = { path = "../../conventions" }
+http-body = "1.1.0"
 opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
 opentelemetry-http = { version = "0.33.1", default-features = false }
 opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }

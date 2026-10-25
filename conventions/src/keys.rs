@@ -36,7 +36,6 @@ pub const LENS_HTTP_REQUEST_BODY: &str = "lens.http.request.body";
 pub const LENS_HTTP_RESPONSE_BODY: &str = "lens.http.response.body";
 pub const LENS_HTTP_REQUEST_BODY_TRUNCATED: &str = "lens.http.request.body.truncated";
 pub const LENS_HTTP_RESPONSE_BODY_TRUNCATED: &str = "lens.http.response.body.truncated";
-pub const LENS_DB_QUERY_PARAMETERS: &str = "lens.db.query.parameters";
 pub const LENS_REDACTION_COUNT: &str = "lens.redaction.count";
 /// Resource attribute overriding the node kind: `frontend` or `service`.
 pub const LENS_NODE_KIND: &str = "lens.node.kind";

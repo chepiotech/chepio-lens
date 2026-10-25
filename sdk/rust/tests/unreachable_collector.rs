@@ -20,6 +20,7 @@ async fn serve_requests(endpoint: String) -> Duration {
     let lens = init_with(Config {
         service_name: "demo-api".into(),
         endpoint: Some(endpoint),
+        ..Config::default()
     })
     .unwrap();
     let app = Router::new()

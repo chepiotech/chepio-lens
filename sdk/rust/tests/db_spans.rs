@@ -63,6 +63,10 @@ async fn queries_inside_a_request_become_child_client_spans() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
+    // The server span ends once the response body has been sent.
+    axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let spans = exporter.get_finished_spans().unwrap();
     let server = spans
         .iter()

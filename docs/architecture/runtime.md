@@ -5,7 +5,8 @@ Status: design (2026-10-23). Numbers are starting defaults to be validated by th
 
 ## Critical path: request in the app → visible on the map
 
-1. The app handles a request. The SDK records spans in memory; nothing blocks the request path on export.
+1. The app handles a request. The SDK records spans in memory; nothing blocks the request path on export. The Rust
+   SDK's server span ends when the response body has been sent (or dropped), with the captured bodies attached.
 2. The SDK batch processor exports every 500 ms (OpenTelemetry's default is 5 s, too slow for a live map) or when
    512 spans are queued.
 3. `POST /v1/traces` → body limit → decode (protobuf or JSON) → normalize names → redact → store → link and

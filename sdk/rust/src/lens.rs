@@ -13,9 +13,11 @@ use opentelemetry_sdk::trace::{
 };
 use tracing_subscriber::prelude::*;
 // Domain
+use crate::capture::{CaptureConfig, DEFAULT_BODY_LIMIT};
 use crate::database::Database;
 use crate::http::HttpLayer;
 use crate::sqlx_events::SqlxEventsLayer;
+use chepio_lens_conventions::redaction::Redactor;
 // Consts
 use chepio_lens_conventions::keys::LENS_SDK_VERSION;
 
@@ -28,12 +30,87 @@ const EXPORT_QUEUE_SPANS: usize = 2_048;
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(2);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 const ENDPOINT_VAR: &str = "CHEPIO_LENS_ENDPOINT";
+const CAPTURE_BODIES_VAR: &str = "CHEPIO_LENS_CAPTURE_BODIES";
+const BODY_LIMIT_VAR: &str = "CHEPIO_LENS_BODY_LIMIT";
+const REDACT_KEYS_VAR: &str = "CHEPIO_LENS_REDACT_KEYS";
 
+/// SDK settings; [`init`] reads them from the environment (`docs/architecture/interfaces.md`, Configuration).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub service_name: String,
     /// Collector OTLP base URL, e.g. `http://localhost:4318`. `None` turns the SDK into a no-op.
     pub endpoint: Option<String>,
+    /// Capture request and response bodies of text content types; headers are always captured.
+    pub capture_bodies: bool,
+    /// Most bytes of a redacted body exported.
+    pub body_limit: usize,
+    /// Keys masked in addition to the defaults; they never replace them.
+    pub redact_keys: Vec<String>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            service_name: "unknown_service".to_owned(),
+            endpoint: None,
+            capture_bodies: true,
+            body_limit: DEFAULT_BODY_LIMIT,
+            redact_keys: Vec::new(),
+        }
+    }
+}
+
+impl Config {
+    /// Settings from `CHEPIO_LENS_*` variables read through `var`. An invalid value prints a warning and keeps the
+    /// default: a typo in a chepio-lens variable must not stop the app (I1).
+    pub fn from_env(service_name: &str, var: impl Fn(&str) -> Option<String>) -> Self {
+        let defaults = Self::default();
+        let capture_bodies = match var(CAPTURE_BODIES_VAR).as_deref().map(str::trim) {
+            None | Some("") => defaults.capture_bodies,
+            Some("true" | "1") => true,
+            Some("false" | "0") => false,
+            Some(other) => {
+                eprintln!(
+                    "chepio-lens: {CAPTURE_BODIES_VAR}={other:?} is not true or false; bodies are captured"
+                );
+                defaults.capture_bodies
+            }
+        };
+        let body_limit = match var(BODY_LIMIT_VAR) {
+            None => defaults.body_limit,
+            Some(value) => value.trim().parse().unwrap_or_else(|_| {
+                eprintln!(
+                    "chepio-lens: {BODY_LIMIT_VAR}={value:?} is not a byte count; using {}",
+                    defaults.body_limit
+                );
+                defaults.body_limit
+            }),
+        };
+        Self {
+            service_name: service_name.to_owned(),
+            endpoint: var(ENDPOINT_VAR).filter(|endpoint| !endpoint.trim().is_empty()),
+            capture_bodies,
+            body_limit,
+            redact_keys: var(REDACT_KEYS_VAR)
+                .map(|keys| {
+                    keys.split(',')
+                        .map(str::trim)
+                        .filter(|key| !key.is_empty())
+                        .map(str::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
+    }
+
+    fn capture(&self) -> Arc<CaptureConfig> {
+        let keys: Vec<&str> = self.redact_keys.iter().map(String::as_str).collect();
+        Arc::new(CaptureConfig {
+            bodies: self.capture_bodies,
+            body_limit: self.body_limit,
+            redactor: Redactor::new(&keys),
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -57,21 +134,17 @@ pub struct Lens {
 struct Inner {
     provider: SdkTracerProvider,
     tracer: SdkTracer,
+    capture: Arc<CaptureConfig>,
     database: Option<Database>,
 }
 
-/// Reads `CHEPIO_LENS_ENDPOINT`; without it the SDK does nothing.
+/// Reads `CHEPIO_LENS_ENDPOINT` and the other `CHEPIO_LENS_*` settings; without an endpoint the SDK does nothing.
 pub fn init(service_name: &str) -> Result<Lens, InitError> {
-    init_with(Config {
-        service_name: service_name.to_owned(),
-        endpoint: env::var(ENDPOINT_VAR)
-            .ok()
-            .filter(|endpoint| !endpoint.trim().is_empty()),
-    })
+    init_with(Config::from_env(service_name, |name| env::var(name).ok()))
 }
 
 pub fn init_with(config: Config) -> Result<Lens, InitError> {
-    let Some(endpoint) = config.endpoint else {
+    let Some(endpoint) = config.endpoint.clone() else {
         return Ok(Lens { inner: None });
     };
     let exporter = SpanExporter::builder()
@@ -93,7 +166,7 @@ pub fn init_with(config: Config) -> Result<Lens, InitError> {
         .with_span_processor(processor)
         .with_resource(resource(&config.service_name))
         .build();
-    Ok(Lens::from_provider(provider))
+    Ok(Lens::from_provider(provider, config.capture()))
 }
 
 fn resource(service_name: &str) -> Resource {
@@ -109,12 +182,13 @@ pub fn database_events_enabled() -> bool {
 }
 
 impl Lens {
-    fn from_provider(provider: SdkTracerProvider) -> Self {
+    fn from_provider(provider: SdkTracerProvider, capture: Arc<CaptureConfig>) -> Self {
         let tracer = provider.tracer("chepio-lens-sdk");
         Self {
             inner: Some(Arc::new(Inner {
                 provider,
                 tracer,
+                capture,
                 database: None,
             })),
         }
@@ -123,11 +197,27 @@ impl Lens {
     /// Exports synchronously to `exporter`, for tests that inspect spans.
     #[doc(hidden)]
     pub fn with_exporter(service_name: &str, exporter: impl SpanExporterTrait + 'static) -> Self {
+        Self::with_exporter_config(
+            Config {
+                service_name: service_name.to_owned(),
+                ..Config::default()
+            },
+            exporter,
+        )
+    }
+
+    /// [`Lens::with_exporter`] with capture settings from `config`; its endpoint is ignored.
+    #[doc(hidden)]
+    pub fn with_exporter_config(
+        config: Config,
+        exporter: impl SpanExporterTrait + 'static,
+    ) -> Self {
         Self::from_provider(
             SdkTracerProvider::builder()
                 .with_simple_exporter(exporter)
-                .with_resource(resource(service_name))
+                .with_resource(resource(&config.service_name))
                 .build(),
+            config.capture(),
         )
     }
 
@@ -147,7 +237,7 @@ impl Lens {
     pub fn http_layer(&self) -> HttpLayer {
         let inner = self.inner.as_ref();
         HttpLayer::new(
-            inner.map(|inner| inner.tracer.clone()),
+            inner.map(|inner| (inner.tracer.clone(), inner.capture.clone())),
             inner.is_some_and(|inner| inner.database.is_some()),
         )
     }

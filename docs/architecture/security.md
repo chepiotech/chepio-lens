@@ -39,11 +39,18 @@ value is the string `[REDACTED]`.
 |---|---|
 | Request and response headers | `authorization`, `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`, `x-auth-token`, `x-csrf-token` |
 | JSON body keys, form fields, URL query parameters (key contains) | `password`, `passwd`, `secret`, `token`, `apikey`, `api_key`, `authorization`, `cookie`, `session`, `credential`, `private_key`, `card_number`, `cvv`, `iban` |
-| SQL | `db.query.text` is kept: parameterized queries contain placeholders, not values. Parameter values are captured only when `CHEPIO_LENS_CAPTURE_SQL_PARAMS=true`; they have no names, so key-based masking cannot protect them |
+| SQL | `db.query.text` is kept: parameterized queries contain placeholders, not values. Parameter values are never captured: they have no names, so key-based masking could not protect them (ADR-0010) |
 
-Bodies are captured only for `application/json`, `application/x-www-form-urlencoded` and `text/*`; for other
-content types only the size and content type are recorded. A body that is not valid JSON despite its content type is
-captured as text without key-based masking and marked in the inspector.
+### Body capture
+
+- Bodies are captured as text only for `application/json`, `*+json`, `application/x-www-form-urlencoded` and
+  `text/*`; for other content types only the size and the content-type header are recorded.
+- Redact whole, then cut: an SDK keeps at most 256 KiB of a body, masks it (JSON keys, form fields; plain text is kept
+  as is), then cuts it to `CHEPIO_LENS_BODY_LIMIT` at a character boundary and sets `lens.http.*.body.truncated`.
+  Cutting first would leave invalid JSON whose keys could not be masked. A body over 256 KiB, or one not read to the
+  end, is recorded by size and the truncation flag only, without text.
+- A body that is not valid JSON despite its content type is captured as text without key-based masking and marked in
+  the inspector.
 
 ## Known gaps (accepted for the MVP)
 

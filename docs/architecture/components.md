@@ -1,8 +1,9 @@
 # Components
 
-Status (2026-10-24): `conventions`, the collector core (ingest, graph, store, UI API, SSE, embedded UI), the Rust SDK
-and the web SDK (both without payload capture), the UI map (v0) and the demo app are implemented. Scope of this view: the MVP — frontend, backend and database
-of one instrumented app. Docker and Kubernetes layers are planned later and are not described here.
+Status (2026-10-25): `conventions`, the collector core (ingest, graph, store, UI API, SSE, embedded UI), the Rust SDK
+with header and body capture, the web SDK (without payload capture yet), the UI map and the demo app are implemented.
+Scope of this view: the MVP — frontend, backend and database of one instrumented app. Docker and Kubernetes layers
+are planned later and are not described here.
 
 ## Context
 

@@ -13,6 +13,7 @@
 //! # Ok(()) }
 //! ```
 
+mod capture;
 mod database;
 mod http;
 mod lens;

@@ -1,7 +1,7 @@
 # Interfaces
 
-Status (2026-10-25): the collector side of sections 1, 3 and 4 and both SDKs without payload capture are
-implemented.
+Status (2026-10-25): the collector side of sections 1, 3 and 4, the Rust SDK with header and body capture, and the
+web SDK without payload capture are implemented.
 Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
 (`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
@@ -39,7 +39,6 @@ Stable OpenTelemetry semantic conventions; the legacy names in brackets are mapp
 | `lens.http.request.body` | string | SDK | Request body, redacted, cut to the body limit |
 | `lens.http.response.body` | string | SDK | Response body, redacted, cut to the body limit |
 | `lens.http.request.body.truncated`, `lens.http.response.body.truncated` | bool | SDK | The body was cut |
-| `lens.db.query.parameters` | string[] | Rust SDK | SQL parameter values; only when `CHEPIO_LENS_CAPTURE_SQL_PARAMS=true`. Not produced while ADR-0008 holds: sqlx events carry no parameters |
 | `lens.redaction.count` | int | SDK, collector | Number of values masked on this span |
 | resource `lens.node.kind` | string | SDK (optional) | Overrides node kind: `frontend` or `service` |
 | resource `lens.sdk.version` | string | SDK | chepio-lens SDK version |
@@ -62,9 +61,16 @@ let app = Router::new() /* routes */ .layer(lens.http_layer());
 
 - Server spans: one per request, joined to the caller via `traceparent`; name `<method> <route>`; attributes
   `http.request.method`, `url.path`, `url.query`, `http.route`, `http.response.status_code`; status error for 5xx.
+- Headers and bodies: every request and response header as `http.request.header.<name>` /
+  `http.response.header.<name>` (string array, sensitive names masked); bodies of text content types as
+  `lens.http.request.body` / `lens.http.response.body` with `lens.http.*.body.truncated` and `http.*.body.size`, by
+  the rules in `security.md` (Body capture). The SDK copies the bodies while they stream through; the app reads them
+  unchanged. The server span ends when the response body has been sent or dropped, so its duration includes the body.
+  `url.query` is masked. Configuration: `CHEPIO_LENS_CAPTURE_BODIES`, `CHEPIO_LENS_BODY_LIMIT`,
+  `CHEPIO_LENS_REDACT_KEYS` (section 4); an invalid value prints a warning and keeps the default.
 - Database spans: from sqlx query events (ADR-0008): `db.system.name`, `server.address`, `server.port`,
-  `db.namespace`, `db.query.text`, `db.operation.name`, `db.response.returned_rows`. Without `with_database` the
-  system is `other_sql`. Database spans need `sqlx::query` events at `DEBUG` to reach the SDK's tracing layer; the
+  `db.namespace`, `db.query.text`, `db.operation.name`, `db.response.returned_rows`; no parameter values (ADR-0010).
+  Without `with_database` the system is `other_sql`. Database spans need `sqlx::query` events at `DEBUG` to reach the SDK's tracing layer; the
   first request prints one warning to stderr when they do not.
 - Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*`.
 
@@ -125,9 +131,8 @@ JSON shapes: `collector/src/types/api.rs`; the UI uses the TypeScript generated 
 |---|---|---|---|
 | `CHEPIO_LENS_ENDPOINT` | Rust SDK | unset (SDK off) | Collector OTLP base URL, e.g. `http://localhost:4318` |
 | `VITE_CHEPIO_LENS_ENDPOINT` (or the app's own env) | web SDK via app config | unset (SDK off) | Same, for the browser |
-| `CHEPIO_LENS_CAPTURE_BODIES` | both SDKs | `true` | Capture request and response bodies |
-| `CHEPIO_LENS_BODY_LIMIT` | both SDKs | `16384` bytes | Max captured bytes per body |
-| `CHEPIO_LENS_CAPTURE_SQL_PARAMS` | Rust SDK | `false` | Capture SQL parameter values |
+| `CHEPIO_LENS_CAPTURE_BODIES` | both SDKs | `true` | Capture request and response bodies (`true`/`1`, `false`/`0`); headers are always captured |
+| `CHEPIO_LENS_BODY_LIMIT` | both SDKs | `16384` bytes | Max exported bytes per redacted body |
 | `CHEPIO_LENS_REDACT_KEYS` | SDKs, collector | empty | Extra keys to mask, comma-separated; added to the defaults in `security.md` |
 | `CHEPIO_LENS_OTLP_ADDR` | collector | `127.0.0.1:4318` | Ingest listener |
 | `CHEPIO_LENS_UI_ADDR` | collector | `127.0.0.1:4320` | UI and UI API listener |

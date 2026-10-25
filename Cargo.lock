@@ -206,6 +206,7 @@ version = "0.0.0"
 dependencies = [
  "axum",
  "chepio-lens-conventions",
+ "http-body",
  "opentelemetry",
  "opentelemetry-http",
  "opentelemetry-otlp",

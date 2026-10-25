@@ -1,7 +1,7 @@
 # ADR-0004: Payloads are captured and redacted in the SDK
 
 ## Status
-Accepted
+Accepted. The "SQL parameter values are opt-in" part is superseded by ADR-0010.
 
 ## Date
 2026-10-23
