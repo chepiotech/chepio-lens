@@ -58,3 +58,9 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+.details-panel--inline { position: static; width: auto; padding: 0.75rem 1rem; border: 0; border-radius: 0; box-shadow: none; }
+.details-panel__routes h3 { font-size: 0.8rem; margin: 1rem 0 0.5rem; }
+.details-panel__routes ul { list-style: none; padding: 0; margin: 0; }
+.details-panel__routes li { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.75rem; overflow-wrap: anywhere; }
+.details-panel__routes span { color: #a3a8b3; }

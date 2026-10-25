@@ -52,6 +52,15 @@ The suite also ingests synthetic failures and successes and checks the canvas ar
 including a delayed older failure. This regression can run alone with `--grep 'arrow recovers'`; a custom Playwright
 config may set `use.baseURL` for the UI and `metadata.otlpUrl` for ingest (defaults are the compose ports above).
 
+`request-inspector.spec.ts` covers the logs filters, edge selection, payload masking and literal HTML rendering,
+waterfall clock skew, SQL and errors, live pause/resume/reconnect, docking and resizing, pagination bounds, late
+search responses and failed/evicted loads. Tests run with one worker because they share and reset the collector.
+
+On the map, click **Logs** to see the activity stream, or click an arrow to filter it to that edge. Select a line
+to inspect its trace and span. The panel can dock on the right or at the bottom; drag its divider or use the arrow
+keys while the divider is focused to resize it. Scrolling up pauses live updates; **Resume live** returns to the
+newest entries. Edge statistics include the session totals, approximate percentiles and calls per route.
+
 `pnpm --filter demo-e2e perf` measures the map's frame time on a synthetic graph of the target size; it starts the UI
 dev server itself and needs no stack.
 

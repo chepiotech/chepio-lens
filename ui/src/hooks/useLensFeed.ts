@@ -15,11 +15,13 @@ export type FeedStatus = 'connecting' | 'live' | 'offline'
  * Live graph from the collector: subscribe to SSE first, then fetch the snapshot, so no event falls between the two.
  * `resync` and every reconnect fetch the snapshot again.
  */
-export function useLensFeed(onRequest: (request: RequestView) => void) {
+export function useLensFeed(onRequest: (request: RequestView) => void, onLog?: () => void, onResync?: () => void) {
   const [graph, dispatch] = useReducer(graphReducer, emptyGraph)
   const [status, setStatus] = useState<FeedStatus>('connecting')
   const onRequestRef = useRef(onRequest)
   onRequestRef.current = onRequest
+  const listenersRef = useRef({ onLog, onResync })
+  listenersRef.current = { onLog, onResync }
   const reloadRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export function useLensFeed(onRequest: (request: RequestView) => void) {
     source.onopen = () => {
       setStatus('live')
       void load()
+      listenersRef.current.onResync?.()
     }
     // EventSource reconnects by itself; onopen then loads a fresh snapshot.
     source.onerror = () => setStatus(source.readyState === EventSource.CLOSED ? 'offline' : 'connecting')
@@ -58,7 +61,8 @@ export function useLensFeed(onRequest: (request: RequestView) => void) {
       apply({ type: 'edge', edge: JSON.parse(event.data) as EdgeView }),
     )
     source.addEventListener(EVENT.request, (event) => onRequestRef.current(JSON.parse(event.data) as RequestView))
-    source.addEventListener(EVENT.resync, () => void load())
+    source.addEventListener(EVENT.log, () => listenersRef.current.onLog?.())
+    source.addEventListener(EVENT.resync, () => { void load(); listenersRef.current.onResync?.() })
     return () => {
       generation += 1
       pending = null
