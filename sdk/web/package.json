@@ -1,13 +1,28 @@
 {
   "name": "chepio-lens-web",
+  "version": "0.0.0",
   "private": true,
   "license": "MIT OR Apache-2.0",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/core": "2.12.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.223.0",
+    "@opentelemetry/instrumentation": "0.223.0",
+    "@opentelemetry/instrumentation-fetch": "0.223.0",
+    "@opentelemetry/resources": "2.12.0",
+    "@opentelemetry/sdk-trace": "2.12.0",
+    "@opentelemetry/semantic-conventions": "1.43.0"
+  },
   "devDependencies": {
+    "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }

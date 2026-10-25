@@ -1,7 +1,7 @@
 # Interfaces
 
-Status (2026-10-24): the collector side of sections 1, 3 and 4 and the Rust SDK without payload capture are
-implemented; the web SDK is still the plan.
+Status (2026-10-25): the collector side of sections 1, 3 and 4 and both SDKs without payload capture are
+implemented; collector CORS (section 1) is not built yet.
 Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
 (`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
@@ -68,9 +68,29 @@ let app = Router::new() /* routes */ .layer(lens.http_layer());
 Browser:
 
 ```ts
-initLens({ serviceName: 'demo-web', endpoint: import.meta.env.VITE_CHEPIO_LENS_ENDPOINT,
-           propagateTo: [/^http:\/\/localhost:8080\//] })   // no-op when endpoint is empty
+import { initLens } from 'chepio-lens-web'
+
+const lens = initLens({
+  serviceName: 'demo-web',
+  endpoint: import.meta.env.VITE_CHEPIO_LENS_ENDPOINT, // no-op when empty or missing
+  propagateTo: [/^http:\/\/localhost:8080\//],         // cross-origin targets that get traceparent
+  redactKeys: ['tenant'],                               // optional, added to the defaults
+})
+// await lens.shutdown()                                 // stops tracing, flushes, waits at most 2 s
 ```
+
+- Client spans: one per `fetch` call (OpenTelemetry fetch instrumentation); name `<method>`; attributes
+  `http.request.method`, `url.full`, `server.address`, `server.port`, `http.response.status_code`; status error for
+  4xx and 5xx. Same-origin requests always get `traceparent`, cross-origin ones only when they match `propagateTo`
+  (the target must allow the header in its CORS policy).
+- `url.full` has its query parameters masked before export (`lens.redaction.count` on the span); headers and bodies
+  are not captured yet.
+- Export: OTLP/HTTP JSON to `<endpoint>/v1/traces` with `fetch` (`keepalive`, CORS mode, no credentials), batch every
+  500 ms, queue 2,048 spans, timeout 2 s; export requests are not traced. An endpoint that is not a URL prints one
+  console warning and leaves the SDK off; `initLens` never throws. A second call while running returns the running
+  instance.
+- Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*` (`telemetry.sdk.language =
+  webjs`, so the collector draws a frontend node).
 
 ## 3. UI API (collector → UI)
 
