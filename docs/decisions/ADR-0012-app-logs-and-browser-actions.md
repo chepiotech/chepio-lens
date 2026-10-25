@@ -1,4 +1,4 @@
-# ADR-0011: OTLP logs and synchronous browser action correlation
+# ADR-0012: OTLP logs and synchronous browser action correlation
 
 ## Status
 Accepted.

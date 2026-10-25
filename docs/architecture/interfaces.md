@@ -83,7 +83,9 @@ let app = Router::new() /* routes */ .layer(lens.http_layer());
   first request prints one warning to stderr when they do not.
 - Application logs: `tracing` events reaching `lens.tracing_layer()` become OTLP logs with severity, target, fields
   and the current OTel context. `sqlx::query` still becomes a query span only. The application's subscriber controls
-  levels. Telemetry-internal events and HTTP transport targets (`hyper`, `hyper_util`, `h2`, `reqwest`) are excluded
+  levels; the subscriber that `install_tracing()` sets exports `INFO` and above and lets `sqlx::query` through at
+  `DEBUG` for database spans, so libraries' `DEBUG`/`TRACE` events (such as axum's line per accepted connection) stay
+  out (`sdk/rust/tests/install_tracing_levels.rs`). Telemetry-internal events and HTTP transport targets (`hyper`, `hyper_util`, `h2`, `reqwest`) are excluded
   from this export layer to prevent export loops; other subscriber layers remain unchanged. Transport exclusions
   also apply to those libraries when used by the app. Without an active context a log remains uncorrelated.
 - Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*`.

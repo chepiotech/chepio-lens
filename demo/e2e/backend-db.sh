@@ -63,7 +63,14 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 visible=$(python3 -I -c "import time; print(round(time.time() - $sent, 2))")
-[ "$count" -eq "$EXPECTED" ] || fail "$DB_EDGE has $count calls, expected $EXPECTED"
+if [ "$count" -ne "$EXPECTED" ]; then
+  # This script sends no browser requests. Frontend lines after the reset mean an open demo tab: Vite reloads it when
+  # the web container restarts, and its page load queries the notes.
+  browser=$(curl -fsS "$LENS/api/logs?layer=frontend&kind=request&limit=5" | json "len(data['entries'])")
+  [ "$browser" -eq 0 ] || fail "$DB_EDGE has $count calls, expected $EXPECTED; $browser browser requests arrived after \
+the reset: close any browser tab with the demo (http://localhost:5173) and run again"
+  fail "$DB_EDGE has $count calls, expected $EXPECTED"
+fi
 
 graph=$(curl -fsS "$LENS/api/graph")
 kinds=$(echo "$graph" | json "sorted((n['id'], n['kind']) for n in data['nodes'])")

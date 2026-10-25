@@ -15,6 +15,8 @@ use opentelemetry_sdk::trace::{
     BatchConfigBuilder, BatchSpanProcessor, SdkTracer, SdkTracerProvider,
     SpanExporter as SpanExporterTrait,
 };
+use tracing::Level;
+use tracing_subscriber::filter::Targets;
 use tracing_subscriber::prelude::*;
 // Domain
 use crate::app_logs::AppLogs;
@@ -286,13 +288,18 @@ impl Lens {
     }
 
     /// Sets a global tracing subscriber holding only [`Lens::tracing_layer`], for apps without a subscriber of their
-    /// own. Fails if a global subscriber is already set.
+    /// own: app logs at `INFO` and above, plus the `sqlx::query` events at `DEBUG` that become database spans.
+    /// Libraries' `DEBUG` and `TRACE` events (a line per accepted connection, for example) stay out. Fails if a
+    /// global subscriber is already set.
     pub fn install_tracing(&self) -> Result<(), InitError> {
         if !self.is_enabled() {
             return Ok(());
         }
+        let levels = Targets::new()
+            .with_default(Level::INFO)
+            .with_target("sqlx::query", Level::DEBUG);
         tracing_subscriber::registry()
-            .with(self.tracing_layer())
+            .with(self.tracing_layer().with_filter(levels))
             .try_init()
             .map_err(|error| {
                 InitError(format!(

@@ -38,7 +38,9 @@ Request bodies are limited to 64 KiB.
 ## End-to-end check
 
 `demo/e2e/backend-db.sh` starts the stack, calls the API and checks that the map shows `demo-api → postgres` with the
-right number of calls within 2 s. `--no-build` skips the image build, `--down` stops the stack afterwards.
+right number of calls within 2 s. `--no-build` skips the image build, `--down` stops the stack afterwards. Close
+browser tabs with the demo first: when a rebuild restarts the web container, Vite reloads every open tab, and the
+page load's note queries land in the count (the script says so when it sees browser requests).
 
 With the stack up, the browser test adds a note in the demo and checks that the map shows `demo-web → demo-api →
 postgresql demo` within 2 s and animates the request once (Chromium via Playwright):
