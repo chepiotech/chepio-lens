@@ -51,6 +51,24 @@ pnpm --filter demo-e2e e2e
 `pnpm --filter demo-e2e perf` measures the map's frame time on a synthetic graph of the target size; it starts the UI
 dev server itself and needs no stack.
 
+## SDK overhead
+
+`demo/api/examples/sdk_overhead.rs` measures the latency the Rust SDK adds to the API. It starts the API once per
+mode (without the SDK, SDK without an endpoint, exporting without bodies, with bodies, collector unreachable), sends
+each the same request mix in turn, round after round, and prints latency percentiles and the difference to the API
+without the SDK. It needs Postgres and, for the exporting modes, a running collector:
+
+```sh
+docker compose -f demo/compose.yaml up -d db
+cargo run --release -p chepio-lens-collector &
+DATABASE_URL=postgres://demo:demo@127.0.0.1:55432/demo \
+  cargo run --release -p demo-api --features lens --example sdk_overhead
+```
+
+The default run takes about 9 minutes and adds 100 notes of 1000 characters, deleted at the end. `--collector`,
+`--modes`, `--rate`, `--workers`, `--seconds` and `--rounds` change the setup; results go to
+`docs/architecture/quality-attributes.md`.
+
 ## Run without Docker
 
 ```sh
