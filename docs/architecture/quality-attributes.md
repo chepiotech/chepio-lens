@@ -51,6 +51,15 @@ Measurement runs (2026-10-25, same machine, demo stack in Docker Desktop, Chromi
   and 100 edges, 10 new requests every 100 ms with 2 s on screen (200 at once), 10 s after a 2 s warm-up, viewport
   1440 × 900. Draw time wraps the renderer's draw call; frame intervals come from `requestAnimationFrame`.
 
+Timing diagnosis (2026-10-25, same local demo stack and Chromium): individual requests were matched by a unique
+query tag through `/api/logs` to their frontend spans. Browser request timing versus caller-span duration was
+67.9 / 69 ms (`/api/fail`), 14.3 / 15 ms (`/api/notes`), 749.7 / 751 ms (`/api/slow`), and 41.9 / 43 ms
+(`/api/notes`). The former map label stayed at session p95 741.4552 ms after faster calls: it was an approximate
+histogram percentile, not those calls' duration. The map now shows the exact latest caller-span duration; no SDK
+timing change was needed. The fetch instrumentation's observer wait delays export, but preserves the end timestamp
+captured when the response body completed. This comparison diagnoses display semantics; it is not an SDK overhead
+measurement.
+
 ## Test strategy
 
 | Level | What | Where |

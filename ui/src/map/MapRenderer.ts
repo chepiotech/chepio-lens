@@ -151,7 +151,7 @@ export class MapRenderer {
     const { ctx } = this
     const selected = this.selection?.kind === 'edge' && this.selection.id === edge.id
     const [p0, p1, p2, p3] = curve
-    ctx.strokeStyle = selected ? COLORS.selected : edge.errors > 0 ? COLORS.error : COLORS.edge
+    ctx.strokeStyle = selected ? COLORS.selected : edge.last_error ? COLORS.error : COLORS.edge
     ctx.lineWidth = selected ? 2.5 : 1.5
     ctx.beginPath()
     ctx.moveTo(p0.x, p0.y)
@@ -167,11 +167,11 @@ export class MapRenderer {
     ctx.fill()
 
     const middle = pointOnCurve(curve, 0.5)
-    const errors = edge.errors > 0 ? ` · ${edge.errors} err` : ''
     ctx.font = `11px ${FONT}`
     ctx.textAlign = 'center'
-    ctx.fillStyle = edge.errors > 0 ? COLORS.error : COLORS.muted
-    ctx.fillText(`${edge.count} · p95 ${formatMs(edge.p95_ms)}${errors}`, middle.x, middle.y - 8)
+    ctx.fillStyle = edge.last_error ? COLORS.error : COLORS.muted
+    const calls = `${edge.count} ${edge.count === 1 ? 'call' : 'calls'}`
+    ctx.fillText(`Last ${formatMs(edge.last_duration_ms)}${edge.last_error ? ' · error' : ''} · ${calls}`, middle.x, middle.y - 8)
   }
 
   private drawPulse(pulse: ActivePulse, now: number) {

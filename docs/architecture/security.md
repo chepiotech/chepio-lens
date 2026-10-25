@@ -32,8 +32,10 @@ the main risk: they carry passwords, tokens and personal data (ADR-0004).
 
 ## Redaction defaults
 
-Applied by both SDKs before export and again by the collector on ingest. Matching is case-insensitive. The masked
-value is the string `[REDACTED]`.
+Applied by both SDKs before export and again by the collector on ingest; the collector's pass covers span event
+attributes with the same keys as span attributes. Event-local request/response content types take precedence for
+form masking; when absent, they inherit the containing span's content types. Matching is case-insensitive. The
+masked value is the string `[REDACTED]`.
 
 | Where | Masked |
 |---|---|
@@ -49,11 +51,16 @@ value is the string `[REDACTED]`.
   as is), then cuts it to `CHEPIO_LENS_BODY_LIMIT` at a character boundary and sets `lens.http.*.body.truncated`.
   Cutting first would leave invalid JSON whose keys could not be masked. A body over 256 KiB, or one not read to the
   end, is recorded by size and the truncation flag only, without text.
+- If the collector's attribute limit cuts a request or response body from an exporter, the ingest redaction pass
+  replaces the entire body with `[REDACTED]` and retains its truncation marker. This applies to span and event
+  attributes: a cut JSON prefix cannot be masked reliably by key. Bodies already masked and shortened by the SDK
+  keep their normal SDK truncation markers and are unaffected when within the collector's limit.
 - A body that is not valid JSON despite its content type is captured as text without key-based masking and marked in
   the inspector.
 
 ## Known gaps (accepted for the MVP)
 
-- Secrets inside free text (e.g. a token inside a log message body) are not detected.
+- Secrets inside free text (e.g. a token inside a log message body or an `exception` event's message) are not
+  detected.
 - SQL with values inlined into the query text (no placeholders) shows those values.
 - No integrity or authenticity of ingested spans: any local process can send fake spans.

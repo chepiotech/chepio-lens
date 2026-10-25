@@ -18,6 +18,19 @@ impl TraceId {
     }
 }
 
+impl TraceId {
+    /// Parses the 32 lowercase or uppercase hex digits of `Display`.
+    pub fn from_hex(text: &str) -> Option<Self> {
+        if text.len() != 32 || !text.is_ascii() {
+            return None;
+        }
+        let bytes: Option<Vec<u8>> = (0..16)
+            .map(|i| u8::from_str_radix(&text[i * 2..i * 2 + 2], 16).ok())
+            .collect();
+        Self::from_slice(&bytes?)
+    }
+}
+
 impl SpanId {
     /// `None` unless `bytes` has 8 bytes and is not all zeros.
     pub fn from_slice(bytes: &[u8]) -> Option<Self> {
@@ -150,6 +163,18 @@ pub struct Span {
     pub attributes: Attributes,
     /// Attributes cut to the collector's value limit.
     pub truncated_attributes: Vec<String>,
+    /// Span events (`exception`, browser timing), at most the collector's per-span bound, in arrival order.
+    pub events: Vec<SpanEvent>,
+}
+
+/// Something that happened during a span, e.g. an `exception` with its message and stack trace.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SpanEvent {
+    pub name: String,
+    pub time_ns: u64,
+    pub attributes: Attributes,
+    /// Event attribute keys whose values were cut to the collector's value limit.
+    pub truncated_attributes: Vec<String>,
 }
 
 impl Span {
@@ -175,12 +200,26 @@ impl Span {
 
     /// Rough number of bytes the span holds, for the store's byte bound.
     pub fn approx_size(&self) -> usize {
-        let attributes: usize = self
-            .attributes
+        let size = |attributes: &Attributes| -> usize {
+            attributes
+                .iter()
+                .map(|(key, value)| key.len() + value.approx_size())
+                .sum()
+        };
+        let events: usize = self
+            .events
             .iter()
-            .map(|(key, value)| key.len() + value.approx_size())
+            .map(|event| {
+                32 + event.name.len()
+                    + size(&event.attributes)
+                    + event
+                        .truncated_attributes
+                        .iter()
+                        .map(String::len)
+                        .sum::<usize>()
+            })
             .sum();
-        128 + self.name.len() + self.service.name.len() + attributes
+        128 + self.name.len() + self.service.name.len() + size(&self.attributes) + events
     }
 }
 
@@ -197,6 +236,12 @@ mod tests {
             TraceId::from_slice(&[0xab; 16]).unwrap().to_string(),
             "ab".repeat(16)
         );
+        let id = TraceId([0xab; 16]);
+        assert_eq!(TraceId::from_hex(&id.to_string()), Some(id));
+        assert_eq!(TraceId::from_hex(&"AB".repeat(16)), Some(id));
+        for bad in ["ab", &"0".repeat(32), &"zz".repeat(16), &"é".repeat(16)] {
+            assert_eq!(TraceId::from_hex(bad), None, "{bad}");
+        }
         assert!(SpanId::from_slice(&[0; 8]).is_none());
         assert_eq!(
             SpanId::from_slice(&[1, 2, 3, 4, 5, 6, 7, 8])

@@ -23,9 +23,9 @@ use crate::handlers::{AppState, HttpLimits};
 // Consts
 use crate::consts::{
     BODY_READ_TIMEOUT, DEFAULT_CORS_ORIGINS, DEFAULT_OTLP_ADDR, DEFAULT_UI_ADDR, LINK_WINDOW,
-    MAX_ATTRIBUTE_VALUE_BYTES, MAX_CONCURRENT_INGEST, MAX_EDGES, MAX_NODES, MAX_ORPHAN_SERVERS,
-    MAX_OTLP_BODY_BYTES, MAX_PENDING_CLIENTS, MAX_SPANS_PER_REQUEST, MAX_SSE_CLIENTS,
-    MAX_STORED_BYTES, MAX_STORED_REQUESTS, SSE_BUFFER_EVENTS,
+    MAX_ATTRIBUTE_VALUE_BYTES, MAX_CONCURRENT_INGEST, MAX_EDGES, MAX_LOG_ENTRIES, MAX_NODES,
+    MAX_ORPHAN_SERVERS, MAX_OTLP_BODY_BYTES, MAX_PENDING_CLIENTS, MAX_SPANS_PER_REQUEST,
+    MAX_SSE_CLIENTS, MAX_STORED_BYTES, MAX_STORED_REQUESTS, SSE_BUFFER_EVENTS,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +115,7 @@ impl Default for Limits {
                 max_requests: MAX_STORED_REQUESTS,
                 max_bytes: MAX_STORED_BYTES,
                 max_spans_per_request: MAX_SPANS_PER_REQUEST,
+                max_log_entries: MAX_LOG_ENTRIES,
             },
             bounds: Bounds {
                 graph: GraphLimits {

@@ -1,5 +1,6 @@
 // Domain
 use super::edge::EdgeSnapshot;
+use super::log::LogEntry;
 use super::node::Node;
 use super::request::RequestSummary;
 
@@ -9,4 +10,6 @@ pub enum LensEvent {
     Node(Node),
     Edge(EdgeSnapshot),
     Request(RequestSummary),
+    /// A new line in the log, one per stored span.
+    Log(LogEntry),
 }

@@ -54,9 +54,12 @@ export function syntheticGraph(edgeCount = 100, seed = 42): { nodes: NodeView[];
       protocol: to.kind === 'database' ? 'db' : 'http',
       count: 1 + Math.floor(next() * 5_000),
       errors: Math.floor(next() * 20),
+      last_error: false,
+      last_duration_ms: 0.06,
       p50_ms: 1 + next() * 50,
       p95_ms: 5 + next() * 400,
       rate_per_s: next() * 50,
+      routes: [],
       last_seen: '0',
     })
   }

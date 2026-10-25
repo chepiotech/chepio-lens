@@ -1,7 +1,7 @@
 # Interfaces
 
-Status (2026-10-25): the collector side of sections 1, 3 and 4 and both SDKs with header and body capture are
-implemented.
+Status (2026-10-25): the collector side of sections 1, 3 and 4 (including the log and request detail endpoints) and
+both SDKs with header and body capture are implemented; the UI does not use the log and detail endpoints yet.
 Attribute keys, the legacy-to-stable mapping and the redaction rules are defined in the `conventions` crate
 (`conventions/src/keys.rs`, `legacy.rs`, `redaction.rs`); this file gives their meaning.
 
@@ -116,20 +116,28 @@ CORS. JSON only. Internal contract: the UI and the collector ship in one binary,
 | Endpoint | Returns |
 |---|---|
 | `GET /api/graph` | `{ nodes, edges, generated_at }` |
-| `GET /api/requests?node=&edge=&status=&limit=&before=` | Request summaries, newest first, cursor by `before` (not built yet) |
-| `GET /api/requests/{trace_id}` | The request with all its spans and attributes (not built yet) |
+| `GET /api/logs?layer=&node=&edge=&status=&q=&limit=&before=` | Log lines, newest first: `{ entries, next_before }`. `layer`: comma-separated `frontend`, `backend`, `database` (empty = all); `node`: a node id; `edge`: an edge id (lines of the client spans of its hops and of the server spans they called within the same trace, for requests still in memory); `status`: `ok` or `error`; `q`: case-insensitive substring of the line text, service or trace id; `limit`: default 100, at most 500; `before`: an entry `id` for the next, older page. Unknown values give `400` |
+| `GET /api/requests/{trace_id}` | The request summary and every span: ids, parent, service, layer, kind, name, start offset from the request's earliest span as received (I12), duration, status and message, attributes (`{key, kind, values}`; arrays as one value per item), events (name, offset from the span's start, attributes, `truncated_attributes`), truncated span keys. `400` for a malformed id, `404` once evicted or reset |
 | `GET /api/events` | Server-Sent Events stream, see below |
-| `POST /api/reset` | Clears requests and graph; `204` |
+| `POST /api/reset` | Clears requests, logs and graph; `204` |
 | `GET /api/stats` | Collector counters (`runtime.md`, self-observability) |
 | `GET /healthz` | `200` when the collector is serving |
 
-SSE events: `node` (node created or changed), `edge` (edge stats changed), `request` (new or updated request summary
-with `has_root` and `hops`: each edge it touched with its start offset and duration on the request's timeline,
-used for animation), `resync` (the client fell behind and must fetch
+SSE events: `node` (node created or changed), `edge` (edge stats changed, with `routes`: calls per route of the
+callee, most called first), `request` (new or updated request summary with `has_root` and `hops`: each edge it
+touched with its start offset and duration on the request's timeline, used for animation), `log` (a new log line,
+one per stored span, the same shape as an entry of `GET /api/logs`), `resync` (the client fell behind and must fetch
 `/api/graph` again).
 
 JSON shapes: `collector/src/types/api.rs`; the UI uses the TypeScript generated from them in `ui/src/api/generated/`
 (ADR-0009).
+
+Edges in snapshots and SSE include `last_error` and `last_duration_ms`: the latest completed call's result and
+caller-span duration. The map uses these for its arrow color and `Last …` label; a successful call clears the red
+arrow. Delayed older calls still contribute to session `count`, `errors`, `p50_ms` and `p95_ms`, but do not replace
+the latest result. Percentiles are approximate session statistics, shown separately in edge details. Latest-call
+ordering uses the caller's timestamps (`data.md`); clocks of different instances sharing a service name can skew
+that ordering. Neither export delay nor animation duration is included in `last_duration_ms`.
 
 ## 4. Configuration
 

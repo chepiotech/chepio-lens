@@ -636,3 +636,396 @@ async fn browser_calls_without_a_traced_backend_reach_an_external_node() {
     let graph = get_json(&app.ui, "/api/graph").await;
     assert_eq!(edge(&graph, "svc:demo-web->ext:localhost:5173")["count"], 3);
 }
+
+/// Both recorded batches: three browser fetches, three API requests, three queries.
+async fn post_recorded_session(app: &App) {
+    post(&app.otlp, "/v1/traces", "application/json", WEB_SDK_NOTES).await;
+    post(
+        &app.otlp,
+        "/v1/traces",
+        "application/x-protobuf",
+        WEB_API_NOTES.to_vec(),
+    )
+    .await;
+}
+
+async fn log_texts(app: &App, query: &str) -> (Vec<(String, String)>, Value) {
+    let page = get_json(&app.ui, &format!("/api/logs{query}")).await;
+    let lines = page["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                entry["layer"].as_str().unwrap().to_owned(),
+                entry["text"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect();
+    (lines, page)
+}
+
+#[tokio::test]
+async fn logs_list_every_span_newest_first_and_filter_by_layer_node_edge_status_and_text() {
+    let app = app(Limits::default());
+    post_recorded_session(&app).await;
+
+    let (all, page) = log_texts(&app, "").await;
+    assert_eq!(all.len(), 9, "{all:?}");
+    assert!(page["next_before"].is_null());
+    let times: Vec<u64> = page["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["time"].as_str().unwrap().parse().unwrap())
+        .collect();
+    assert!(
+        times.windows(2).all(|pair| pair[0] >= pair[1]),
+        "newest first"
+    );
+
+    let count =
+        |lines: &[(String, String)], layer: &str| lines.iter().filter(|(l, _)| l == layer).count();
+    assert_eq!(
+        (
+            count(&all, "frontend"),
+            count(&all, "backend"),
+            count(&all, "database")
+        ),
+        (3, 3, 3)
+    );
+    let (queries, _) = log_texts(&app, "?layer=database").await;
+    assert_eq!(queries.len(), 3);
+    assert!(
+        queries
+            .iter()
+            .any(|(_, text)| text.starts_with("INSERT INTO notes")),
+        "{queries:?}"
+    );
+    assert_eq!(log_texts(&app, "?layer=frontend,backend").await.0.len(), 6);
+    assert_eq!(log_texts(&app, "?q=insert").await.0.len(), 1);
+    assert_eq!(log_texts(&app, "?status=error").await.0.len(), 0);
+    assert_eq!(
+        log_texts(&app, "?edge=svc:demo-web-%3Esvc:demo-api")
+            .await
+            .0
+            .len(),
+        6,
+        "browser fetches and the requests they called"
+    );
+    assert_eq!(
+        log_texts(&app, "?node=db:postgresql:127.0.0.1:55432/demo")
+            .await
+            .0
+            .len(),
+        3
+    );
+
+    let (first, page) = log_texts(&app, "?limit=4").await;
+    let before = page["next_before"].as_str().unwrap();
+    let (rest, page) = log_texts(&app, &format!("?limit=10&before={before}")).await;
+    assert_eq!((first.len(), rest.len()), (4, 5));
+    assert!(page["next_before"].is_null());
+}
+
+#[tokio::test]
+async fn bad_log_filters_and_trace_ids_are_answered_with_400_and_unknown_requests_with_404() {
+    let app = app(Limits::default());
+    for query in [
+        "?layer=network",
+        "?status=maybe",
+        "?before=yesterday",
+        "?limit=lots",
+    ] {
+        let response = app
+            .ui
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/logs{query}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{query}");
+    }
+    for (uri, status) in [
+        ("/api/requests/not-a-trace", StatusCode::BAD_REQUEST),
+        (
+            "/api/requests/0af7651916cd43dd8448eb211c80319c",
+            StatusCode::NOT_FOUND,
+        ),
+    ] {
+        let response = app
+            .ui
+            .clone()
+            .oneshot(Request::get(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), status, "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn request_detail_has_every_span_with_attributes_events_and_offsets() {
+    let app = app(Limits::default());
+    post_recorded_session(&app).await;
+    let (_, page) = log_texts(&app, "?q=insert").await;
+    let trace_id = page["entries"][0]["trace_id"].as_str().unwrap().to_owned();
+
+    let detail = get_json(&app.ui, &format!("/api/requests/{trace_id}")).await;
+
+    assert_eq!(detail["request"]["trace_id"], trace_id.as_str());
+    let spans = detail["spans"].as_array().unwrap();
+    let layers: Vec<&str> = spans
+        .iter()
+        .map(|span| span["layer"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        layers,
+        ["frontend", "backend", "database"],
+        "ordered by start"
+    );
+    let browser = &spans[0];
+    assert_eq!(browser["start_offset_ms"], 0.0);
+    assert!(
+        browser["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["name"] == "fetchStart"),
+        "browser timing events are kept: {browser}"
+    );
+    let url = browser["attributes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|attribute| attribute["key"] == "url.full")
+        .unwrap();
+    assert_eq!(url["kind"], "string");
+    assert_eq!(url["values"][0], "http://localhost:5173/api/notes");
+    assert_eq!(spans[2]["kind"], "client");
+}
+
+#[tokio::test]
+async fn every_stored_span_is_announced_as_a_log_event() {
+    let app = app(Limits::default());
+    let response = app
+        .ui
+        .clone()
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let mut events = response.into_body();
+
+    post(&app.otlp, "/v1/traces", "application/json", DEMO_TRACE).await;
+
+    let log = next_event(&mut events, "log").await;
+    assert!(log.contains(r#""layer":"#), "{log}");
+    assert!(log.contains(r#""id":""#), "{log}");
+    assert_eq!(get_json(&app.ui, "/api/stats").await["log_entries"], 4);
+}
+
+#[tokio::test]
+async fn request_detail_marks_truncated_event_attributes() {
+    for content_type in ["application/json", "application/x-protobuf"] {
+        let app = app(Limits {
+            max_attribute_bytes: 64,
+            ..Limits::default()
+        });
+        let mut fixture: Value = serde_json::from_str(DEMO_TRACE).unwrap();
+        fixture["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["events"] = serde_json::json!([
+            {
+                "name": "exception",
+                "timeUnixNano": "1760000000001000000",
+                "attributes": [{
+                    "key": "exception.message",
+                    "value": { "stringValue": "é".repeat(40) }
+                }]
+            }
+        ]);
+        let body = if content_type == "application/json" {
+            serde_json::to_vec(&fixture).unwrap()
+        } else {
+            serde_json::from_value::<ExportTraceServiceRequest>(fixture)
+                .unwrap()
+                .encode_to_vec()
+        };
+
+        assert_eq!(
+            post(&app.otlp, "/v1/traces", content_type, body).await.0,
+            StatusCode::OK
+        );
+        let detail = get_json(&app.ui, "/api/requests/4bf92f3577b34da6a3ce929d0e0e4736").await;
+        let event = &detail["spans"][0]["events"][0];
+        assert_eq!(event["attributes"][0]["values"][0], "é".repeat(32));
+        assert_eq!(
+            event["truncated_attributes"],
+            serde_json::json!(["exception.message"]),
+            "the inspector must distinguish a cut value from a complete one ({content_type})"
+        );
+    }
+}
+
+#[tokio::test]
+async fn collector_truncated_bodies_are_masked_in_spans_and_events() {
+    for content_type in ["application/json", "application/x-protobuf"] {
+        let app = app(Limits {
+            max_attribute_bytes: 64,
+            ..Limits::default()
+        });
+        let mut fixture: Value = serde_json::from_str(DEMO_TRACE).unwrap();
+        let span = &mut fixture["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+        let body = format!(
+            r#"{{"password":"fake-body-secret","padding":"{}"}}"#,
+            "x".repeat(128)
+        );
+        let attributes = serde_json::json!([
+            { "key": "lens.http.request.body", "value": { "stringValue": body } },
+            { "key": "lens.http.response.body", "value": { "stringValue": body } }
+        ]);
+        span["attributes"] = attributes.clone();
+        span["events"] = serde_json::json!([{
+            "name": "retry",
+            "timeUnixNano": "1760000000001000000",
+            "attributes": attributes
+        }]);
+        let body = if content_type == "application/json" {
+            serde_json::to_vec(&fixture).unwrap()
+        } else {
+            serde_json::from_value::<ExportTraceServiceRequest>(fixture)
+                .unwrap()
+                .encode_to_vec()
+        };
+
+        assert_eq!(
+            post(&app.otlp, "/v1/traces", content_type, body).await.0,
+            StatusCode::OK
+        );
+        let detail = get_json(&app.ui, "/api/requests/4bf92f3577b34da6a3ce929d0e0e4736").await;
+        assert!(
+            !detail.to_string().contains("fake-body-secret"),
+            "collector truncation must not bypass masking"
+        );
+        let span = &detail["spans"][0];
+        for owner in [span, &span["events"][0]] {
+            for key in ["lens.http.request.body", "lens.http.response.body"] {
+                let attribute = owner["attributes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|attribute| attribute["key"] == key)
+                    .unwrap();
+                assert_eq!(attribute["values"][0], "[REDACTED]");
+                assert!(
+                    owner["truncated_attributes"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&Value::from(key))
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn edges_break_their_calls_down_by_the_callee_route() {
+    let app = app(Limits::default());
+    post_recorded_session(&app).await;
+    let graph = get_json(&app.ui, "/api/graph").await;
+    let routes = |id: &str| -> Vec<(String, u64)> {
+        edge(&graph, id)["routes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|route| {
+                (
+                    route["route"].as_str().unwrap().to_owned(),
+                    route["count"].as_u64().unwrap(),
+                )
+            })
+            .collect()
+    };
+
+    assert_eq!(
+        routes(WEB_TO_API),
+        [
+            ("GET /api/notes".to_owned(), 2),
+            ("POST /api/notes".to_owned(), 1)
+        ]
+    );
+    assert_eq!(
+        routes(API_TO_DB),
+        [("SELECT".to_owned(), 2), ("INSERT".to_owned(), 1)]
+    );
+}
+
+#[tokio::test]
+async fn latest_edge_call_recovers_after_error_without_erasing_session_stats() {
+    for success_first in [false, true] {
+        let app = app(Limits::default());
+        let batch = |success: bool| {
+            let mut fixture: Value = serde_json::from_str(DEMO_TRACE).unwrap();
+            let trace_id = if success {
+                "11111111111111111111111111111111"
+            } else {
+                "22222222222222222222222222222222"
+            };
+            for resource in fixture["resourceSpans"].as_array_mut().unwrap() {
+                for span in resource["scopeSpans"][0]["spans"].as_array_mut().unwrap() {
+                    span["traceId"] = Value::from(trace_id);
+                }
+            }
+            let client = &mut fixture["resourceSpans"][0]["scopeSpans"][0]["spans"][0];
+            let start = 1_760_000_000_000_000_000_u64 + if success { 1_000_000_000 } else { 0 };
+            let duration = if success { 60_000 } else { 700_000_000 };
+            client["startTimeUnixNano"] = Value::from(start.to_string());
+            client["endTimeUnixNano"] = Value::from((start + duration).to_string());
+            client["status"] = serde_json::json!({ "code": if success { 1 } else { 2 } });
+            serde_json::to_vec(&fixture).unwrap()
+        };
+        let response = app
+            .ui
+            .clone()
+            .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let mut events = response.into_body();
+        for success in [success_first, !success_first] {
+            assert_eq!(
+                post(&app.otlp, "/v1/traces", "application/json", batch(success))
+                    .await
+                    .0,
+                StatusCode::OK
+            );
+        }
+        let graph = get_json(&app.ui, "/api/graph").await;
+        let latest = edge(&graph, WEB_TO_API);
+        assert_eq!(latest["count"], 2);
+        assert_eq!(latest["errors"], 1, "history is retained");
+        assert_eq!(
+            latest["last_error"], false,
+            "a late older error must not restore the red arrow"
+        );
+        assert_eq!(
+            latest["last_duration_ms"], 0.06,
+            "latest duration is exact, not the histogram p95"
+        );
+        assert!(latest["p95_ms"].as_f64().unwrap() >= 700.0);
+
+        let mut latest_event = Value::Null;
+        for _ in 0..4 {
+            let event = next_event(&mut events, "edge").await;
+            let data = event
+                .lines()
+                .find_map(|line| line.strip_prefix("data: "))
+                .unwrap();
+            let view: Value = serde_json::from_str(data).unwrap();
+            if view["id"] == WEB_TO_API {
+                latest_event = view;
+            }
+        }
+        assert_eq!(latest_event["last_error"], false, "SSE and snapshots agree");
+        assert_eq!(latest_event["last_duration_ms"], 0.06);
+    }
+}

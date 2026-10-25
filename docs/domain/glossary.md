@@ -20,3 +20,8 @@
 | Payload | Headers, bodies and SQL captured on a span |
 | Redaction | Replacing sensitive values in payloads with `[REDACTED]` |
 | Resync | The UI dropping its incremental state and loading a fresh graph snapshot |
+| Log entry (log line) | One line of the logs panel: a span shown as text with its time, duration, layer and status |
+| Layer | Which part of the app a log line belongs to: `frontend` (browser), `backend` (services) or `database` (queries) |
+| Hop | One edge a request crossed, with when it started on the request's timeline and how long it took |
+| Route stats | Calls of an edge broken down by the callee's route, e.g. `GET /api/notes` or `SELECT notes` |
+| Span event | Something that happened during a span, e.g. an `exception` or a browser timing mark |

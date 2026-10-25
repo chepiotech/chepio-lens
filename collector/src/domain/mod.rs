@@ -5,6 +5,7 @@ pub mod edge;
 pub mod event;
 pub mod graph;
 pub mod linker;
+pub mod log;
 pub mod node;
 pub mod request;
 pub mod span;
