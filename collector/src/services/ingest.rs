@@ -5,6 +5,7 @@ use std::sync::atomic::Ordering;
 
 use chepio_lens_conventions::redaction::Redactor;
 // Domain
+use crate::domain::activity::ActivityUpdate;
 use crate::domain::event::LensEvent;
 use crate::domain::graph::Changes;
 use crate::domain::linker::Link;
@@ -122,7 +123,8 @@ impl Ingest {
                     .observe_service(&record.service, now, &mut changes);
                 logs.push(state.store.insert_log(record));
             }
-            events(&state, &changes, &BTreeSet::new(), logs, now)
+            let activities = state.store.take_activity_updates();
+            events(&state, &changes, &BTreeSet::new(), logs, activities, now)
         };
         self.publish(&updates);
         IngestReply::Accepted {
@@ -140,8 +142,8 @@ impl Ingest {
             for link in &links {
                 record(&mut state, link, now, &mut changes, &mut touched);
             }
-            // Expiry adds hops to stored spans; no new log lines.
-            events(&state, &changes, &touched, Vec::new(), now)
+            // Expiry adds hops to stored spans; no new log lines or activities.
+            events(&state, &changes, &touched, Vec::new(), Vec::new(), now)
         };
         self.publish(&events);
     }
@@ -181,7 +183,11 @@ impl Ingest {
         for link in &state.linker.expire(now.mono_ms) {
             record(&mut state, link, now, &mut changes, &mut touched);
         }
-        (events(&state, &changes, &touched, logs, now), dropped)
+        let activities = state.store.take_activity_updates();
+        (
+            events(&state, &changes, &touched, logs, activities, now),
+            dropped,
+        )
     }
 
     fn publish(&self, events: &[LensEvent]) {
@@ -212,13 +218,14 @@ fn record(
     }
 }
 
-/// New nodes first, then changed edges, then the touched requests and the new log lines, so a client always knows the
-/// nodes an edge uses.
+/// New nodes first, then changed edges, then the touched requests, the new log lines and the changed activities, so a
+/// client always knows the nodes an edge uses.
 fn events(
     state: &State,
     changes: &Changes,
     touched: &BTreeSet<TraceId>,
     logs: Vec<LogEntry>,
+    activities: Vec<ActivityUpdate>,
     now: Now,
 ) -> Vec<LensEvent> {
     let nodes = changes
@@ -238,5 +245,6 @@ fn events(
         .chain(edges)
         .chain(requests)
         .chain(logs.into_iter().map(LensEvent::Log))
+        .chain(activities.into_iter().map(LensEvent::Activity))
         .collect()
 }

@@ -86,6 +86,8 @@ pub fn ui_router(state: Arc<AppState>) -> Router {
         .route("/api/graph", get(ui::graph))
         .route("/api/events", get(ui::events))
         .route("/api/logs", get(ui::logs))
+        .route("/api/activities", get(ui::activities))
+        .route("/api/activities/{id}", get(ui::activity))
         .route("/api/requests/{trace_id}", get(ui::request))
         .route("/api/reset", post(ui::reset))
         .route("/api/stats", get(ui::stats))

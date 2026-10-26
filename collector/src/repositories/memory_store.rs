@@ -1,10 +1,16 @@
 //! Bounded in-memory `TraceStore` (ADR-0005): requests in insertion order, bounded by count, by bytes of span data
-//! and by spans per request; the log of span lines, ordered by time and bounded by count (I9).
+//! and by spans per request; the log of span lines, ordered by time and bounded by count; the activity index, bounded
+//! by count (I9).
 
 // Core
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
+use chepio_lens_conventions::keys::LENS_ACTION_ID;
 // Domain
+use crate::domain::activity::{
+    self, ActivityChange, ActivityDetail, ActivityId, ActivityIndex, ActivityPage, ActivityQuery,
+    ActivityUpdate,
+};
 use crate::domain::log::{LogCursor, LogEntry, LogPage, LogQuery};
 use crate::domain::log_record::LogRecord;
 use crate::domain::request::{HopRecord, RequestDetail, RequestSummary};
@@ -19,6 +25,7 @@ pub struct StoreLimits {
     pub max_spans_per_request: usize,
     pub max_log_entries: usize,
     pub max_log_bytes: usize,
+    pub max_activities: usize,
 }
 
 #[derive(Default)]
@@ -42,6 +49,9 @@ pub struct MemoryStore {
     log_seq: u64,
     log_bytes: usize,
     logs_evicted: u64,
+    activities: ActivityIndex,
+    /// Since the last `take_activity_updates`.
+    activity_changes: Vec<ActivityChange>,
 }
 
 impl MemoryStore {
@@ -57,6 +67,8 @@ impl MemoryStore {
             log_seq: 0,
             log_bytes: 0,
             logs_evicted: 0,
+            activities: ActivityIndex::new(limits.max_activities),
+            activity_changes: Vec::new(),
         }
     }
 
@@ -135,6 +147,10 @@ impl TraceStore for MemoryStore {
         }
         let size = span.approx_size();
         let entry = LogEntry::from_span(&span, self.log_seq);
+        let change = self
+            .activities
+            .on_entry(&entry, span.attr_str(LENS_ACTION_ID));
+        self.activity_changes.push(change);
         self.log_seq += 1;
         request.bytes += size;
         request.spans.push(span);
@@ -147,8 +163,57 @@ impl TraceStore for MemoryStore {
     fn insert_log(&mut self, record: LogRecord) -> LogEntry {
         let entry = LogEntry::from_record(record, self.log_seq);
         self.log_seq += 1;
+        let change = self.activities.on_entry(&entry, None);
+        self.activity_changes.push(change);
         self.keep_log(entry.clone());
         entry
+    }
+
+    fn take_activity_updates(&mut self) -> Vec<ActivityUpdate> {
+        activity::collapse(std::mem::take(&mut self.activity_changes))
+            .into_iter()
+            .filter_map(|(id, replaces)| {
+                self.activities
+                    .get(&id)
+                    .cloned()
+                    .map(|summary| ActivityUpdate { summary, replaces })
+            })
+            .collect()
+    }
+
+    fn activities(&self, query: &ActivityQuery) -> ActivityPage {
+        let edge_traces: HashSet<TraceId> = query
+            .edge
+            .as_deref()
+            .map(|edge| {
+                self.requests
+                    .iter()
+                    .filter(|(_, request)| request.hops.iter().any(|hop| hop.edge_id == edge))
+                    .map(|(trace, _)| *trace)
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.activities.page(query, &edge_traces)
+    }
+
+    fn activity(&self, id: &ActivityId) -> Option<ActivityDetail> {
+        let summary = self.activities.get(id)?.clone();
+        let traces: Vec<Vec<Span>> = summary
+            .traces
+            .iter()
+            .filter_map(|trace| self.requests.get(trace))
+            .map(|request| request.spans.clone())
+            .collect();
+        let records: Vec<&LogEntry> = self
+            .logs
+            .values()
+            .filter(|entry| entry.record.is_some())
+            .filter(|entry| self.activities.owner(entry, None).as_ref() == Some(id))
+            .collect();
+        Some(ActivityDetail {
+            steps: activity::steps(&traces, &records),
+            summary,
+        })
     }
 
     fn record_hop(&mut self, trace_id: TraceId, hop: HopRecord) {
@@ -220,6 +285,8 @@ impl TraceStore for MemoryStore {
             log_entries: self.logs.len(),
             log_bytes: self.log_bytes,
             logs_evicted: self.logs_evicted,
+            activities: self.activities.len(),
+            activities_evicted: self.activities.evicted(),
         }
     }
 }
@@ -237,6 +304,7 @@ mod tests {
         max_spans_per_request: 100,
         max_log_entries: 100,
         max_log_bytes: usize::MAX,
+        max_activities: 100,
     };
 
     fn span_in(trace: u8, id: u8) -> Span {

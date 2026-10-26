@@ -12,7 +12,9 @@ use crate::domain::event::LensEvent;
 // Ports
 use crate::ports::{EventFeed, EventPublisher, EventStream};
 // Types
-use crate::types::api::{EdgeView, LensEventName, LogEntryView, NodeView, RequestView};
+use crate::types::api::{
+    ActivityEventView, EdgeView, LensEventName, LogEntryView, NodeView, RequestView,
+};
 use crate::types::{FeedItem, OutboundEvent};
 
 pub struct SseHub {
@@ -43,6 +45,10 @@ fn outbound(event: &LensEvent) -> OutboundEvent {
         LensEvent::Log(entry) => (
             LensEventName::Log,
             serde_json::to_string(&LogEntryView::from(entry)),
+        ),
+        LensEvent::Activity(update) => (
+            LensEventName::Activity,
+            serde_json::to_string(&ActivityEventView::from(update)),
         ),
     };
     OutboundEvent {

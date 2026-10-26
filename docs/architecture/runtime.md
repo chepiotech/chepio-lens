@@ -78,6 +78,10 @@ Every buffer is bounded; on overflow the oldest entry is dropped and ingest is n
 | One app/action log record after redaction | 16 KiB of body, attributes and service data, at most 64 attributes | Shorten text and discard excess attributes, mark truncation |
 | Routes per edge | 16 | Count further calls under `(other routes)` |
 | `GET /api/logs` page | 100 by default, at most 500 | Clamp `limit` |
+| Activities (ADR-0016) | 10,000 | Drop the oldest by time |
+| Traces listed per activity | 64 | Further traces still join the action, counted in `traces_unlisted` |
+| Steps of one activity | 1,000 | Leave out the rest, counted in `truncated_steps` |
+| `GET /api/activities` page | 50 by default, at most 200 | Clamp `limit` |
 | Attribute value length (collector side) | 256 KiB | Cut, mark as truncated on the span or event; HTTP bodies cut here are masked whole (`security.md`) |
 | Pending client spans | 10,000 | Oldest is attributed to its external node now |
 | Server spans waiting for their client parent | 10,000 | Drop the oldest |
@@ -129,5 +133,6 @@ previous requests. A missing/evicted request is explained in the inspector; fail
 - Structured logs to stderr with no payload values.
 - `GET /healthz` on the UI listener.
 - Counters exposed in `GET /api/stats`: spans received, dropped (by reason), requests evicted, pending links,
-  SSE clients; logs received/rejected, retained log entries/bytes, logs evicted. Byte counts estimate retained data,
+  SSE clients; logs received/rejected, retained log entries/bytes, logs evicted; activities and activities evicted.
+  Byte counts estimate retained data,
   not process RSS. Reset clears storage and graph; ingest counters remain cumulative and store eviction counters reset.

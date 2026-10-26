@@ -1,4 +1,5 @@
 // Domain
+use super::activity::ActivityUpdate;
 use super::edge::EdgeSnapshot;
 use super::log::LogEntry;
 use super::node::Node;
@@ -12,4 +13,6 @@ pub enum LensEvent {
     Request(RequestSummary),
     /// A new line in the log, one per stored span.
     Log(LogEntry),
+    /// A new or changed activity (ADR-0016).
+    Activity(ActivityUpdate),
 }

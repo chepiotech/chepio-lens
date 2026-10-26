@@ -27,7 +27,7 @@ restarts, production use, authentication.
 | Attribute | Target | Measured |
 |---|---|---|
 | Request end → visible on the map | p95 ≤ 2 s | Backend → database: 0.25 s, one sample (A). Browser click → whole chain on the map: 0.92–0.94 s, three runs (C) |
-| Collector ingest throughput | ≥ 2,000 spans/s sustained on a laptop, using < 1 CPU core | 2,000 spans/s at 0.01 cores; maximum ≈ 374,000 spans/s at 1.6 cores, batch p99 6 ms (B) |
+| Collector ingest throughput | ≥ 2,000 spans/s sustained on a laptop, using < 1 CPU core | 2,000 spans/s at 0.01 cores; maximum ≈ 374,000 spans/s at 1.6 cores, batch p99 6 ms (B). With the activity index (ADR-0016), on a loaded machine and next to the build without it: maximum 69,000–71,000 spans/s against 83,000–84,000 (−15%), batch p99 23–26 ms against 23–24 ms, RSS 106–114 MiB against 92 MiB with 10,000 requests and 10,000 activities (J) |
 | Collector memory at default bounds | RSS ≤ 300 MiB | 60 MiB with the store full by count (10,000 requests of 4 spans, no bodies); 3.4 MiB idle (B). Full by bytes (with bodies) not measured yet |
 | Collector startup | ≤ 1 s | 0.56 s to `/healthz` answering (B) |
 | Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | Bodies on: +0.13 ms at p95, +0.05 ms at p50 over the whole mix; requests without a database query +0.13–0.17 ms at p95, +0.03 ms at p50. Exporting without bodies +0.28 ms at p95; SDK without an endpoint +0.07 ms (E). With app log export: bodies on +0.24 ms at p95, +0.11 ms at p50; the most is a 100 KB JSON response, +0.47 ms at p50 and +0.98 ms at p95, spent masking the whole body (F) |
@@ -116,6 +116,13 @@ busy with another session's work: load average 20 falling to 6.7 during H1, 5.7 
   the size and without retries (5–8 ms tasks).
 - (I) As (H), once, after the fix: web SDK export batches of 64 spans instead of 512 (and 33 concurrent exports, so
   shutdown can still flush a full queue). Load average 18 falling to 12.6.
+
+Measurement run (2026-10-26, same machine, release builds, load average 16–20 from other work):
+
+- (J) `cargo run --release -p chepio-lens-collector --example ingest_load -- --target 127.0.0.1:34318 --seconds 15
+  --workers 4 --traces-per-batch 50` against two collectors in turn on the same ports, twice each: `main` before the
+  activity index and the branch adding it. Only the comparison counts; absolute values are lower than (B) because of
+  the load. Removing two allocations per span in the index (service and node ids) took the cost from −35% to −15%.
 
 ## Test strategy
 

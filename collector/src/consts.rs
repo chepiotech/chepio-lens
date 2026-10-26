@@ -32,6 +32,11 @@ pub const MAX_ORPHAN_SERVERS: usize = 10_000;
 pub const MAX_LOG_ENTRIES: usize = 50_000;
 pub const MAX_LOG_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_LOG_RECORD_BYTES: usize = 16 * 1024;
+/// Activities in the logs panel's index (ADR-0016), as many as stored requests; the oldest is dropped first.
+pub const MAX_ACTIVITIES: usize = 10_000;
+/// `GET /api/activities` page size: default and maximum.
+pub const ACTIVITY_PAGE_DEFAULT: usize = 50;
+pub const ACTIVITY_PAGE_MAX: usize = 200;
 /// `GET /api/logs` page size: default and maximum.
 pub const LOG_PAGE_DEFAULT: usize = 100;
 pub const LOG_PAGE_MAX: usize = 500;

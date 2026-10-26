@@ -5,6 +5,9 @@ use std::pin::Pin;
 
 use futures_util::Stream;
 // Domain
+use crate::domain::activity::{
+    ActivityDetail, ActivityId, ActivityPage, ActivityQuery, ActivityUpdate,
+};
 use crate::domain::event::LensEvent;
 use crate::domain::log::{LogEntry, LogPage, LogQuery};
 use crate::domain::log_record::LogRecord;
@@ -30,6 +33,8 @@ pub struct StoreStats {
     pub log_entries: usize,
     pub log_bytes: usize,
     pub logs_evicted: u64,
+    pub activities: usize,
+    pub activities_evicted: u64,
 }
 
 /// Recent requests and their spans (ADR-0005). Bounded; the oldest request is evicted first.
@@ -42,6 +47,12 @@ pub trait TraceStore: Send {
     fn detail(&self, trace_id: &TraceId) -> Option<RequestDetail>;
     /// Log entries matching `query`, newest first. The log has its own count bound, independent of requests.
     fn logs(&self, query: &LogQuery) -> LogPage;
+    /// Activities changed since the last call, each once, with the activities they absorbed (ADR-0016).
+    fn take_activity_updates(&mut self) -> Vec<ActivityUpdate>;
+    /// Activity summaries matching `query`, newest first. The index has its own count bound.
+    fn activities(&self, query: &ActivityQuery) -> ActivityPage;
+    /// An activity with its steps, derived from the spans and records still stored.
+    fn activity(&self, id: &ActivityId) -> Option<ActivityDetail>;
     fn clear(&mut self);
     fn stats(&self) -> StoreStats;
 }

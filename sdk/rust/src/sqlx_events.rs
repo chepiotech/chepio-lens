@@ -14,14 +14,13 @@ use crate::app_logs::AppLogs;
 use crate::database::Database;
 // Consts
 use chepio_lens_conventions::keys::{
-    DB_NAMESPACE, DB_OPERATION_NAME, DB_QUERY_TEXT, DB_SYSTEM_NAME, LENS_DB_AFFECTED_ROWS,
-    SERVER_ADDRESS, SERVER_PORT,
+    DB_NAMESPACE, DB_OPERATION_NAME, DB_QUERY_TEXT, DB_RESPONSE_RETURNED_ROWS, DB_SYSTEM_NAME,
+    LENS_DB_AFFECTED_ROWS, SERVER_ADDRESS, SERVER_PORT,
 };
 
 const SQLX_QUERY_TARGET: &str = "sqlx::query";
 /// Semantic convention value for a SQL database the SDK was not told about.
 const UNKNOWN_SQL_SYSTEM: &str = "other_sql";
-const DB_RESPONSE_RETURNED_ROWS: &str = "db.response.returned_rows";
 
 /// No-op when the SDK has no endpoint. The name is retained for source compatibility; also captures app logs.
 pub struct SqlxEventsLayer {
