@@ -62,7 +62,12 @@ search responses and failed/evicted loads. `app-logs.spec.ts` covers React click
 structured redaction, literal HTML, live backend logs without request context and reset. Tests run with one worker
 because they share and reset the collector.
 
-On the map, click **Logs** to see the activity stream, or click an arrow to filter it to that edge. Select a line
+On the map, click **Logs** to see the activity stream, or click an arrow to filter it to that edge. The panel opens on
+**Actions**: one row per click, submit or navigation with every request it started, per request without an action
+(page load, polling) and per click that started nothing. Expand a row to follow its chain there and back: the click,
+the fetch sent, the backend receiving it, each SQL query and what the database answered, the response and the
+browser receiving it, with headers, bodies and rows; **Open in inspector** shows a step's span. **Origin** filters
+user actions or requests. **Lines** shows one row per span or log record instead. Select a line
 to inspect its trace and span. **Kind** and **Level** filter app logs and actions. Browser console calls appear with
 their severity; click/submit actions can open the first fetch started synchronously by their handler. A log without
 a request still opens its message and attributes. Backend applications using the installed tracing layer export

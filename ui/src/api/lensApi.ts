@@ -1,4 +1,6 @@
 // Types
+import type { ActivityDetailView } from './generated/ActivityDetailView'
+import type { ActivityPageView } from './generated/ActivityPageView'
 import type { GraphView } from './generated/GraphView'
 import type { LensEventName } from './generated/LensEventName'
 import type { LogPageView } from './generated/LogPageView'
@@ -33,6 +35,22 @@ export async function fetchLogs(query: string, before?: string, signal?: AbortSi
   if (before) params.set('before', before)
   const response = await fetch(`/api/logs?${params}`, { signal })
   if (!response.ok) throw new Error('Could not load logs. Check the collector connection and retry.')
+  return response.json()
+}
+
+export async function fetchActivities(query: string, before?: string, signal?: AbortSignal): Promise<ActivityPageView> {
+  const params = new URLSearchParams(query)
+  params.set('limit', '200')
+  if (before) params.set('before', before)
+  const response = await fetch(`/api/activities?${params}`, { signal })
+  if (!response.ok) throw new Error('Could not load actions. Check the collector connection and retry.')
+  return response.json()
+}
+
+export async function fetchActivity(id: string, signal?: AbortSignal): Promise<ActivityDetailView> {
+  const response = await fetch(`/api/activities/${encodeURIComponent(id)}`, { signal })
+  if (response.status === 404) throw new Error('This action is no longer in memory.')
+  if (!response.ok) throw new Error('Could not load the steps of this action. Check the collector connection and retry.')
   return response.json()
 }
 

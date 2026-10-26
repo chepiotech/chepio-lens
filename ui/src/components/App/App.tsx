@@ -10,10 +10,13 @@ import MapSummary from '../MapSummary/MapSummary'
 import MapView, { type MapHandle } from '../MapView/MapView'
 import RequestInspector, { type RequestSelection } from '../RequestInspector/RequestInspector'
 // Hooks
+import { useActivities } from '../../hooks/useActivities'
 import { useLensFeed } from '../../hooks/useLensFeed'
 import { useLogs } from '../../hooks/useLogs'
 // Types
 import type { LogEntryView } from '../../api/generated/LogEntryView'
+import type { StepView } from '../../api/generated/StepView'
+import type { LogsView } from '../../activities/activityState'
 import type { RequestView } from '../../api/generated/RequestView'
 import type { Selection } from '../../map/MapRenderer'
 import type { LogFilters } from '../../logs/logState'
@@ -23,6 +26,7 @@ import './App.css'
 import { RequestSettler } from '../../map/RequestSettler'
 import { pulsesFor } from '../../map/requestPulses'
 import { DEFAULT_FILTERS } from '../../logs/logState'
+import { readLogsView, saveLogsView } from '../../activities/activityState'
 import { readPanelPreferences, savePanelPreferences } from '../InvestigationPanel/panelPreferences'
 
 const STATUS_TEXT = { connecting: 'Connecting…', live: 'Live', offline: 'Collector offline' } as const
@@ -38,8 +42,12 @@ function App() {
   const [session, setSession] = useState(0)
   const [resetting, setResetting] = useState(false)
   const [resetError, setResetError] = useState(false)
-  const logs = useLogs(filters, panelOpen, session)
+  const [logsView, setLogsView] = useState<LogsView>(readLogsView)
+  // Only the shown view loads; both follow the same filters.
+  const logs = useLogs(filters, panelOpen && logsView === 'lines', session)
+  const activities = useActivities(filters, panelOpen && logsView === 'actions', session)
   useEffect(() => savePanelPreferences(preferences), [preferences])
+  useEffect(() => saveLogsView(logsView), [logsView])
   // Each request is animated once, when all its batches have arrived (RequestSettler).
   const settlerRef = useRef<RequestSettler | null>(null)
   settlerRef.current ??= new RequestSettler((request) => mapRef.current?.pulse(pulsesFor(request.hops)))
@@ -54,7 +62,12 @@ function App() {
     logs.invalidate()
     mapRef.current?.flash(entry)
   }, [logs.invalidate])
-  const { graph, status, reset } = useLensFeed(onRequest, onLog, logs.resync)
+  const onResync = useCallback(() => { logs.resync(); activities.resync() }, [logs.resync, activities.resync])
+  const { graph, status, reset } = useLensFeed(onRequest, onLog, onResync, activities.onEvent)
+  const inspectStep = (step: StepView) => {
+    activities.pause()
+    setRequestSelection({ traceId: step.trace_id, spanId: step.span_id })
+  }
   const nodeCount = Object.keys(graph.nodes).length
   const edgeCount = Object.keys(graph.edges).length
   const select = (next: Selection) => {
@@ -115,7 +128,8 @@ function App() {
             <summary>Edge statistics and routes</summary>
             <DetailsPanel graph={graph} selection={selection} inline onClose={() => setSelection(null)} />
           </details>}
-          <LogsPanel graph={graph} filters={filters} onFilters={setFilters} logs={logs} visible={!requestSelection}
+          <LogsPanel graph={graph} filters={filters} onFilters={setFilters} logs={logs} activities={activities}
+            view={logsView} onView={setLogsView} onInspectStep={inspectStep} visible={!requestSelection}
             onInspect={(entry) => { logs.pause(); setRequestSelection({ traceId: entry.trace_id, spanId: entry.span_id, log: entry.record ? entry : undefined }) }} />
           {requestSelection && <RequestInspector selection={requestSelection} revision={requestRevision} onBack={() => setRequestSelection(null)} />}
         </InvestigationPanel>}

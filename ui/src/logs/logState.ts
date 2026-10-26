@@ -1,4 +1,5 @@
 // Types
+import type { ActivityOriginView } from '../api/generated/ActivityOriginView'
 import type { LayerView } from '../api/generated/LayerView'
 import type { LogEntryView } from '../api/generated/LogEntryView'
 import type { LogLevelView } from '../api/generated/LogLevelView'
@@ -6,8 +7,12 @@ import type { LogKindView } from '../api/generated/LogKindView'
 
 export const LOG_VIEW_LIMIT = 2_000
 export const LAYERS: LayerView[] = ['frontend', 'backend', 'database']
-export type LogFilters = { layers: LayerView[]; node: string; edge: string; status: '' | 'ok' | 'error'; level: '' | LogLevelView; kind: '' | LogKindView; text: string }
-export const DEFAULT_FILTERS: LogFilters = { layers: LAYERS, node: '', edge: '', status: '', level: '', kind: '', text: '' }
+/** `level` and `kind` apply to lines, `origin` to actions; the rest to both views. */
+export type LogFilters = {
+  layers: LayerView[]; node: string; edge: string; status: '' | 'ok' | 'error'; level: '' | LogLevelView; kind: '' | LogKindView
+  origin: '' | ActivityOriginView; text: string
+}
+export const DEFAULT_FILTERS: LogFilters = { layers: LAYERS, node: '', edge: '', status: '', level: '', kind: '', origin: '', text: '' }
 
 export function logQuery(filters: LogFilters): string {
   const query = new URLSearchParams()

@@ -1,7 +1,7 @@
 // Core
 import { expect, test, type APIRequestContext, type BrowserContext, type Page } from '@playwright/test'
 // Utils
-import { DEMO, LENS, waitForQuiet } from './support/collector'
+import { DEMO, LENS, openLogLines, waitForQuiet } from './support/collector'
 
 // The demo's fake credentials (demo/api/src/handlers.rs, demo/web/src/services/demoApi.ts). Masked by both SDKs before
 // export and again by the collector (I2), so no response of the collector may contain them.
@@ -42,7 +42,7 @@ async function start(context: BrowserContext, request: APIRequestContext): Promi
 async function inspect(context: BrowserContext, text: string) {
   const map = await context.newPage()
   await map.goto(LENS)
-  await map.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(map)
   await map.getByRole('list', { name: 'Log entries' }).getByRole('button').filter({ hasText: 'backend' })
     .filter({ hasText: text }).first().click()
   return { map, inspector: map.getByRole('region', { name: 'Request inspector' }) }

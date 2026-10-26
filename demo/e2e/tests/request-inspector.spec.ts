@@ -1,5 +1,7 @@
 // Core
 import { expect, test, type APIRequestContext } from '@playwright/test'
+// Utils
+import { openLogLines, showLogLines } from './support/collector'
 
 const lens = () => test.info().project.use.baseURL ?? 'http://localhost:4320'
 const otlp = () => test.info().config.metadata.otlpUrl ?? 'http://localhost:4318'
@@ -46,6 +48,7 @@ test('logs filter by layer, node, edge, status and text; edge selection opens it
   if (!canvas) throw new Error('Map canvas is missing')
   await page.mouse.click(canvas.x + canvas.width / 2 - 168, canvas.y + canvas.height / 2)
   await expect(page.getByRole('combobox', { name: 'Edge', exact: true })).toHaveValue('svc:inspector-web->svc:inspector-api')
+  await showLogLines(page)
   const entries = page.getByRole('list', { name: 'Log entries' }).getByRole('button')
   await expect(entries).toHaveCount(4)
   await page.getByText('Edge statistics and routes', { exact: true }).click()
@@ -69,7 +72,7 @@ test('inspector shows a waterfall and redacted payloads as text, with SQL, error
   let dialogs = 0
   page.on('dialog', async (dialog) => { dialogs += 1; await dialog.dismiss() })
   await page.goto(lens())
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(page)
   const entries = page.getByRole('list', { name: 'Log entries' }).getByRole('button')
   await entries.filter({ hasText: 'backend' }).filter({ hasText: '/api/login' }).click()
   const inspector = page.getByRole('region', { name: 'Request inspector' })
@@ -103,7 +106,7 @@ test('live tail pauses for reading, resumes fresh activity and remembers docking
   let logLoads = 0
   page.on('request', (request) => { if (new URL(request.url()).pathname === '/api/logs') logLoads += 1 })
   await page.goto(lens())
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(page)
   const entries = page.getByRole('list', { name: 'Log entries' }).getByRole('button')
   await expect(entries).toHaveCount(6)
   await page.getByRole('button', { name: 'Pause live' }).click()
@@ -124,7 +127,7 @@ test('live tail pauses for reading, resumes fresh activity and remembers docking
   await page.keyboard.press('ArrowUp')
   await expect(resize).toHaveAttribute('aria-valuenow', '384')
   await page.reload()
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(page)
   await expect(page.getByRole('button', { name: 'Dock on right' })).toBeVisible()
   await expect(resize).toHaveAttribute('aria-valuenow', '384')
   await page.getByRole('button', { name: 'Reset', exact: true }).click()
@@ -149,7 +152,7 @@ test('older pages stay bounded and a late search response cannot restore old res
     await route.fulfill({ json: { entries, next_before: matches.length > 500 ? entries.at(-1)!.id : null } })
   })
   await page.goto(lens())
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(page)
   const entries = page.getByRole('list', { name: 'Log entries' }).getByRole('button')
   await expect(entries).toHaveCount(500)
   await page.getByRole('button', { name: 'Pause live' }).click()
@@ -177,7 +180,7 @@ test('failed log loads can be retried and an evicted request is explained', asyn
     else await route.continue()
   })
   await page.goto(lens())
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(page)
   await expect(page.getByRole('alert')).toContainText('Could not load logs')
   unavailable = false
   await page.getByRole('button', { name: 'Retry logs' }).click()

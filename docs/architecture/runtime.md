@@ -101,7 +101,10 @@ Every buffer is bounded; on overflow the oldest entry is dropped and ingest is n
 
 ## UI activity window
 
-The logs panel loads 500 lines per page and keeps at most 2,000, sorted by timestamp and arrival sequence. Live
+The logs panel opens on actions (ADR-0016) and remembers the view. The actions view loads 200 activities per page and
+keeps at most 500, oldest first by cursor; SSE `activity` invalidates like `log` does, an activity named in `replaces`
+leaves at once, and an expanded activity reloads its steps on every update of it. Only the shown view loads.
+The lines view loads 500 lines per page and keeps at most 2,000, sorted by timestamp and arrival sequence. Live
 refreshes follow SSE invalidations coalesced over 250 ms; an active refresh can catch up through at most four pages.
 There is no polling while idle or while the panel is closed. Loading earlier lines keeps the older end of the
 window and pauses live updates; resuming replaces it with the newest page. Scrolling upward pauses automatic
