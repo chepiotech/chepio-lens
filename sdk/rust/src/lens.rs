@@ -21,6 +21,7 @@ use tracing_subscriber::prelude::*;
 // Domain
 use crate::app_logs::AppLogs;
 use crate::capture::{CaptureConfig, DEFAULT_BODY_LIMIT};
+use crate::client::ClientLayer;
 use crate::database::Database;
 use crate::http::HttpLayer;
 use crate::sqlx_events::SqlxEventsLayer;
@@ -264,12 +265,21 @@ impl Lens {
         self
     }
 
-    /// Tower layer for an axum `Router`: one server span per request, joined to the caller's trace via `traceparent`.
+    /// Tower layer for an axum `Router` or tonic server: one server span joined through `traceparent`.
     pub fn http_layer(&self) -> HttpLayer {
         let inner = self.inner.as_ref();
         HttpLayer::new(
             inner.map(|inner| (inner.tracer.clone(), inner.capture.clone())),
             inner.is_some_and(|inner| inner.database.is_some()),
+        )
+    }
+
+    /// Tower layer for outbound HTTP clients and tonic channels: client spans and W3C context propagation.
+    pub fn client_layer(&self) -> ClientLayer {
+        ClientLayer::new(
+            self.inner
+                .as_ref()
+                .map(|inner| (inner.tracer.clone(), inner.capture.clone())),
         )
     }
 

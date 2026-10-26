@@ -20,6 +20,16 @@ Status: implemented (2026-10-25). Numbers are starting defaults to be validated 
 
 Target: p95 ≤ 2 s from request end to the map on a local machine (`quality-attributes.md`).
 
+## Outbound calls and gRPC
+
+The client Tower layer starts one span at `call`, injects its context, and delegates readiness to the same inner
+service instance. It adds no connection, retry, deadline, queue, task or concurrency limit: these remain the
+application transport's responsibility. Completion follows the response body, including gRPC trailers. Transport or
+body failure records a fixed error category; cancellation ends the span without waiting for export. Streaming body
+polls run in the span context so nested work remains correlated. State is per call; there is no shared active span.
+Capture uses the existing per-body bounds and exporter queues. Caches, persistence and additional services are not
+needed for this instrumentation. See ADR-0015 for compatibility and capture limits.
+
 ## App logs and actions
 
 Both SDKs batch logs separately from spans with the same 500 ms interval, 512-record batch, 2,048-record queue and

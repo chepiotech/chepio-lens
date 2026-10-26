@@ -29,7 +29,7 @@ backend SDK emits.
 | Collector | `collector/` (crate `chepio-lens-collector`, binary `chepio-lens`) | Rust | Receives OTLP, normalizes and redacts spans and logs, derives the graph, keeps a bounded in-memory store, serves the UI API, SSE and the embedded UI |
 | Conventions | `conventions/` (crate `chepio-lens-conventions`) | Rust | Attribute keys, legacy-to-stable name mapping, redaction rules; shared test vectors in `conventions/testdata/` |
 | UI | `ui/` | TypeScript, React, Vite, Canvas 2D | Map page and request inspector; built into static files that the collector embeds |
-| Rust SDK | `sdk/rust/` (crate `chepio-lens-sdk`) | Rust | One-call setup of OpenTelemetry for axum + sqlx backends; HTTP server and database spans; payload capture and app logs with redaction |
+| Rust SDK | `sdk/rust/` (crate `chepio-lens-sdk`) | Rust | One-call setup of OpenTelemetry for axum + sqlx backends; HTTP/gRPC server and client spans, database spans; payload capture and app logs with redaction |
 | Web SDK | `sdk/web/` (package `chepio-lens-web`) | TypeScript | One-call setup of OpenTelemetry in the browser; fetch spans; `traceparent` propagation; redacted payloads and console logs; browser actions |
 | Demo app | `demo/` (`demo/web`, `demo/api`, `demo/compose.yaml`) | React + Vite, Rust (axum, sqlx), Postgres | The reference app to instrument; used by end-to-end tests |
 

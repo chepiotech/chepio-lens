@@ -1,6 +1,6 @@
 [package]
 name = "chepio-lens-sdk"
-description = "One-call OpenTelemetry setup for axum + sqlx backends, reporting to chepio-lens"
+description = "OpenTelemetry setup for axum, sqlx and Tower HTTP/gRPC clients, reporting to chepio-lens"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -21,7 +21,9 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["registry", "std"] }
 
 [dev-dependencies]
+hyper-util = { version = "0.1.21", features = ["client-legacy", "http1", "tokio"] }
 opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace", "logs", "testing"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "postgres"] }
 tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "time"] }
+tonic = { version = "0.14.6", default-features = false, features = ["transport", "router", "codegen"] }
 tower = { version = "0.5.3", features = ["util"] }

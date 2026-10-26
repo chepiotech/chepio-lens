@@ -11,19 +11,18 @@ use axum::extract::MatchedPath;
 use axum::http::{Request, Response};
 use opentelemetry::context::FutureExt;
 use opentelemetry::propagation::TextMapPropagator;
-use opentelemetry::trace::{SpanKind, Status, TraceContextExt, Tracer};
+use opentelemetry::trace::{SpanKind, TraceContextExt, Tracer};
 use opentelemetry::{Context, KeyValue};
 use opentelemetry_http::HeaderExtractor;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::SdkTracer;
 use tower::{Layer, Service};
 // Domain
-use crate::capture::{CaptureConfig, Exchange, RecordingBody, Side};
+use crate::capture::{CaptureConfig, Exchange, ObservedBody, ResponseGuard, Side};
 use crate::lens::database_events_enabled;
+use crate::rpc;
 // Consts
-use chepio_lens_conventions::keys::{
-    HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE, HTTP_ROUTE, URL_PATH, URL_QUERY,
-};
+use chepio_lens_conventions::keys::{HTTP_REQUEST_METHOD, HTTP_ROUTE, URL_PATH, URL_QUERY};
 
 const DATABASE_EVENTS_OFF: &str = "chepio-lens: database spans are off because sqlx::query DEBUG events do not reach \
 the chepio-lens tracing layer. Add lens.tracing_layer() to your tracing subscriber (or call lens.install_tracing()), \
@@ -34,6 +33,7 @@ pub struct HttpLayer {
     tracer: Option<(SdkTracer, Arc<CaptureConfig>)>,
     check_database_events: bool,
     warned: Arc<AtomicBool>,
+    rpc_methods: &'static [&'static str],
 }
 
 impl HttpLayer {
@@ -45,7 +45,14 @@ impl HttpLayer {
             tracer,
             check_database_events,
             warned: Arc::new(AtomicBool::new(false)),
+            rpc_methods: &[],
         }
+    }
+
+    /// Recognized qualified gRPC methods, e.g. `package.Service/Call` (RPC semantic conventions).
+    pub fn with_rpc_methods(mut self, methods: &'static [&'static str]) -> Self {
+        self.rpc_methods = methods;
+        self
     }
 }
 
@@ -104,7 +111,7 @@ where
             .extensions()
             .get::<MatchedPath>()
             .map(|route| route.as_str().to_owned());
-        let name = format!("{method} {}", route.as_deref().unwrap_or(&path));
+        let mut name = format!("{method} {}", route.as_deref().unwrap_or(&path));
         let mut attributes = vec![
             KeyValue::new(HTTP_REQUEST_METHOD, method),
             KeyValue::new(URL_PATH, path),
@@ -112,8 +119,12 @@ where
         if let Some(route) = route {
             attributes.push(KeyValue::new(HTTP_ROUTE, route));
         }
+        let grpc = rpc::is_grpc(request.headers());
+        if grpc {
+            (name, attributes) = rpc::attributes(request.uri(), self.layer.rpc_methods);
+        }
         let mut redactions = 0;
-        if let Some(query) = request.uri().query() {
+        if !grpc && let Some(query) = request.uri().query() {
             let query = capture.redactor.redact_form(query);
             redactions += query.count;
             attributes.push(KeyValue::new(URL_QUERY, query.text));
@@ -124,9 +135,15 @@ where
             .with_attributes(attributes)
             .start_with_context(tracer, &parent);
         let cx = parent.with_span(span);
-        let exchange = Exchange::new(cx.clone(), capture.clone(), request.headers(), redactions);
+        let exchange = Exchange::new(
+            cx.clone(),
+            capture.clone(),
+            request.headers(),
+            redactions,
+            SpanKind::Server,
+        );
         let request = request.map(|body| {
-            Body::new(RecordingBody::new(
+            Body::new(ObservedBody::new(
                 Body::new(body),
                 exchange.clone(),
                 Side::Request,
@@ -134,29 +151,25 @@ where
         });
 
         // The handler runs inside the span's context, so sqlx query events find their parent (ADR-0008).
-        let response = self.inner.call(request).with_context(cx.clone());
+        let mut guard = ResponseGuard(Some(exchange.clone()));
+        let response = {
+            let _guard = cx.clone().attach();
+            self.inner.call(request)
+        }
+        .with_context(cx);
         Box::pin(async move {
             let result = response.await;
-            let span = cx.span();
             match result {
                 Ok(response) => {
-                    let code = response.status().as_u16();
-                    span.set_attribute(KeyValue::new(HTTP_RESPONSE_STATUS_CODE, i64::from(code)));
-                    if code >= 500 {
-                        span.set_status(Status::error(""));
-                    }
-                    exchange.response_started(response.headers());
+                    exchange.response_started(response.status(), response.headers());
+                    guard.0.take();
                     // The span ends when this body has been sent or dropped, so its duration includes the body.
                     Ok(response.map(|body| {
-                        Body::new(RecordingBody::new(
-                            Body::new(body),
-                            exchange,
-                            Side::Response,
-                        ))
+                        Body::new(ObservedBody::new(Body::new(body), exchange, Side::Response))
                     }))
                 }
                 Err(error) => {
-                    span.set_status(Status::error("the service failed"));
+                    exchange.fail("service.error");
                     exchange.end();
                     Err(error)
                 }

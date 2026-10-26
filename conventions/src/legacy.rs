@@ -3,7 +3,7 @@
 // Consts
 use crate::keys::{
     DB_NAMESPACE, DB_QUERY_TEXT, DB_SYSTEM_NAME, HTTP_REQUEST_METHOD, HTTP_RESPONSE_STATUS_CODE,
-    SERVER_ADDRESS, SERVER_PORT, URL_FULL,
+    RPC_SYSTEM_NAME, SERVER_ADDRESS, SERVER_PORT, URL_FULL,
 };
 
 /// Legacy attribute renamed to a stable one with the same value.
@@ -16,7 +16,11 @@ pub const RENAMES: &[(&str, &str)] = &[
     ("db.system", DB_SYSTEM_NAME),
     ("db.name", DB_NAMESPACE),
     ("db.statement", DB_QUERY_TEXT),
+    ("rpc.system", RPC_SYSTEM_NAME),
 ];
+
+pub const RPC_GRPC_STATUS_CODE: &str = "rpc.grpc.status_code";
+pub const RPC_SERVICE: &str = "rpc.service";
 
 /// Legacy `http.target` (`/path?query`), which maps to `url.path` and `url.query`.
 pub const HTTP_TARGET: &str = "http.target";

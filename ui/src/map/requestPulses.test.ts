@@ -6,7 +6,7 @@ import type { PacketView } from '../api/generated/PacketView'
 import { MAX_REQUEST_MS, MIN_HOP_MS, MIN_TRAVEL_SHARE, TRAVEL_SHARE, pulsesFor } from './requestPulses'
 
 const packet: PacketView = {
-  kind: 'http', operation: 'GET', request_body: 'none', response_body: 'json', status_code: 200, error: false,
+  kind: 'http', operation: 'GET', request_body: 'none', response_body: 'json', rpc_status: null, status_code: 200, error: false,
 }
 const hop = (edge: string, start_offset_ms: number, duration_ms: number, hopPacket: PacketView | null = null) =>
   ({ edge, start_offset_ms, duration_ms, packet: hopPacket })

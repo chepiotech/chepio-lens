@@ -18,3 +18,4 @@ One decision per file. An accepted decision is never edited: a new ADR supersede
 | [ADR-0012](ADR-0012-app-logs-and-browser-actions.md) | OTLP app logs and synchronous browser action correlation | Accepted |
 | [ADR-0013](ADR-0013-packet-icons-from-lucide-path-data.md) | Packet icons are Lucide path data drawn on the canvas, not an icon package | Accepted |
 | [ADR-0014](ADR-0014-sdk-distribution.md) | The web SDK ships as a tarball on GitHub releases; the Rust SDK stays a git dependency | Accepted |
+| [ADR-0015](ADR-0015-outbound-http-and-grpc.md) | One Tower layer for outbound HTTP and gRPC; status through trailers | Accepted |

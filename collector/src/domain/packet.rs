@@ -1,10 +1,11 @@
 //! What travelled on a hop, for the map's packet icons: protocol, operation, body types, status and error.
 
 // Core
+use chepio_lens_conventions::grpc;
 use chepio_lens_conventions::keys::{
     DB_OPERATION_NAME, DB_QUERY_TEXT, DB_SYSTEM_NAME, HTTP_REQUEST_BODY_SIZE, HTTP_REQUEST_METHOD,
     HTTP_RESPONSE_BODY_SIZE, HTTP_RESPONSE_STATUS_CODE, LENS_HTTP_REQUEST_BODY,
-    LENS_HTTP_RESPONSE_BODY, URL_FULL, URL_SCHEME,
+    LENS_HTTP_RESPONSE_BODY, RPC_RESPONSE_STATUS_CODE, URL_FULL, URL_SCHEME,
 };
 // Domain
 use super::span::{AttrValue, Span};
@@ -19,6 +20,7 @@ pub enum PacketKind {
     Http,
     Https,
     Sql,
+    Grpc,
 }
 
 /// What a request or response body holds, from its content type and size.
@@ -34,11 +36,12 @@ pub enum BodyKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
     pub kind: PacketKind,
-    /// HTTP method or SQL operation, upper case.
+    /// HTTP method or SQL operation (upper case), or qualified gRPC method.
     pub operation: Option<String>,
     pub request_body: BodyKind,
     pub response_body: BodyKind,
     pub status_code: Option<u16>,
+    pub rpc_status: Option<String>,
     /// The edge's rule: the caller or the callee failed.
     pub error: bool,
 }
@@ -56,6 +59,22 @@ impl Packet {
                 request_body: BodyKind::None,
                 response_body: BodyKind::None,
                 status_code: None,
+                rpc_status: None,
+                error,
+            };
+        }
+        if caller.is_grpc() || callee.is_some_and(Span::is_grpc) {
+            return Self {
+                kind: PacketKind::Grpc,
+                operation: pick(&|span| span.rpc_method().map(str::to_owned)),
+                request_body: BodyKind::Binary,
+                response_body: BodyKind::Binary,
+                status_code: None,
+                rpc_status: pick(&|span| {
+                    span.attr_str(RPC_RESPONSE_STATUS_CODE)
+                        .filter(|status| grpc::STATUS_NAMES.contains(status))
+                        .map(str::to_owned)
+                }),
                 error,
             };
         }
@@ -115,6 +134,7 @@ impl Packet {
                 .flatten()
                 .find_map(|span| span.attr_i64(HTTP_RESPONSE_STATUS_CODE))
                 .and_then(|code| u16::try_from(code).ok()),
+            rpc_status: None,
             error,
         }
     }
@@ -224,6 +244,7 @@ mod tests {
                 request_body: BodyKind::Json,
                 response_body: BodyKind::Json,
                 status_code: Some(201),
+                rpc_status: None,
                 error: false,
             }
         );

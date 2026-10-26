@@ -62,6 +62,47 @@ network as the collector, the endpoint is `http://chepio-lens:4318`.
 - `CHEPIO_LENS_CAPTURE_BODIES=false` stops body capture; `CHEPIO_LENS_REDACT_KEYS=tenant,ssn` masks more keys
   (defaults: [security](../architecture/security.md)).
 
+### Calls to other services (hyper and tonic)
+
+Wrap the client once where you build it. Keep the SDK initialization and wrappers behind your `lens` feature:
+
+```rust
+use tower::{Layer, ServiceExt};
+
+// `http_client` is your existing hyper_util::client::legacy::Client.
+let http_client = lens.client_layer().layer(http_client);
+let response = http_client.clone().oneshot(request).await?;
+
+// `channel` is your existing tonic Channel, with its TLS, deadlines and limits already configured.
+let channel = lens.client_layer()
+    .with_endpoint("https://identity:50051".parse()?)
+    .with_rpc_methods(&["school.Identity/GetUser"])
+    .layer(channel);
+let identity = IdentityClient::new(channel);
+```
+
+Concrete client types become `chepio_lens_sdk::ClientService<OriginalClient>` (or `ClientService<tonic::transport::Channel>`).
+Use a feature-dependent type alias where your application stores these types. `with_endpoint` is telemetry metadata;
+use the same endpoint as the channel, never a browser Host header. It does not change TLS or route the request.
+
+On each tonic server, use the same server layer as for axum:
+
+```rust
+tonic::transport::Server::builder()
+    .layer(lens.http_layer().with_rpc_methods(&["school.Identity/GetUser"]))
+    .add_service(identity_server)
+    .serve(address).await?;
+```
+
+Run calls inside the incoming request's context. When explicitly spawning a task, carry the context with
+`opentelemetry::context::FutureExt::with_context`; unrelated tasks otherwise start independent traces. Existing
+clients' retries and timeouts remain their responsibility. gRPC status includes final trailers, so HTTP 200 with an
+RPC error is shown as failed. gRPC payloads and arbitrary metadata are not captured. HTTP outgoing request bodies
+are captured by the instrumented callee; the client records headers, declared size and the response body.
+
+The optional static method list contains the methods recognized by your generated service. Without it the span is
+named `grpc`, and the bounded original method is still available on the map and in the inspector.
+
 ## 3. Connect the frontend
 
 Install the SDK as a development dependency:
@@ -101,6 +142,53 @@ out.
 Use your app. Within about two seconds the map shows `my-web → my-api → postgresql …`, each request travels along it,
 and **Logs** lists the requests, queries, your log lines and clicks. Click a line to inspect its headers, bodies and
 SQL. `curl -s http://localhost:4320/api/stats` counts what arrived.
+
+## Local Kubernetes / kind
+
+Use this only in a local cluster dedicated to your development app. Copy
+[`collector/kubernetes.yaml`](../../collector/kubernetes.yaml) into its local overlay, in the app's namespace.
+Set `CHEPIO_LENS_CORS_ORIGINS` there to the actual browser origin (for example `http://localhost:18088`). The pod
+explicitly binds its container interfaces; binary and image defaults remain loopback. The manifest uses one replica,
+a ClusterIP service and no external ingress. A restart loses the in-memory session.
+
+Before the first release, build and load the image, then change the copied manifest's image to `chepio-lens:dev`:
+
+```sh
+docker build -f collector/Dockerfile -t chepio-lens:dev .
+kind load docker-image chepio-lens:dev --name my-app
+kubectl --context kind-my-app -n my-app apply -f path/to/copied/chepio-lens.yaml
+kubectl --context kind-my-app -n my-app rollout status deployment/chepio-lens
+kubectl --context kind-my-app -n my-app port-forward --address 127.0.0.1 service/chepio-lens 4318:4318 4320:4320
+```
+
+Use your cluster name, namespace and copied file path. Keep the port-forward running; stop any other local collector
+using those ports first. Backend pods use `CHEPIO_LENS_ENDPOINT=http://chepio-lens:4318`; the browser uses
+`http://localhost:4318`, and the map is at `http://localhost:4320`.
+
+Set `chepio-lens-client: "true"` on the instrumented services' **pod template** labels. The supplied NetworkPolicy
+allows their ingest in the same namespace. If your app already restricts egress, extend its existing policy with:
+
+```yaml
+# One additional item under spec.egress of the app's existing policy.
+- to:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: chepio-lens
+  ports:
+    - protocol: TCP
+      port: 4318
+```
+
+Keep the app's existing DNS, database and service rules. Do not add an egress-isolating policy to previously
+unrestricted app pods without also describing their other required destinations. The collector needs no egress.
+NetworkPolicy only works with a supporting network plugin; a default kind cluster may not enforce it. Policies are
+additive: another broad allow rule can widen access. Check the cluster's effective policies and keep it private.
+See [Kubernetes network policies](https://kubernetes.io/docs/concepts/services-networking/network-policies/) and
+[port forwarding](https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/).
+
+Validate without creating resources: `kubectl --context kind-my-app -n my-app create --dry-run=client --validate=true -f path/to/copied/chepio-lens.yaml -o json` (API discovery requires access to the local cluster).
+Then check `/healthz`, use the app and verify `browser → gateway → service → database` on the map. If a service is
+missing, check its endpoint, pod labels and egress policy; the browser cannot use the cluster's internal DNS name.
 
 ## Troubleshooting
 
