@@ -14,7 +14,8 @@ use crate::app_logs::AppLogs;
 use crate::database::Database;
 // Consts
 use chepio_lens_conventions::keys::{
-    DB_NAMESPACE, DB_OPERATION_NAME, DB_QUERY_TEXT, DB_SYSTEM_NAME, SERVER_ADDRESS, SERVER_PORT,
+    DB_NAMESPACE, DB_OPERATION_NAME, DB_QUERY_TEXT, DB_SYSTEM_NAME, LENS_DB_AFFECTED_ROWS,
+    SERVER_ADDRESS, SERVER_PORT,
 };
 
 const SQLX_QUERY_TARGET: &str = "sqlx::query";
@@ -40,6 +41,7 @@ struct QueryFields {
     statement: Option<String>,
     elapsed_secs: Option<f64>,
     rows_returned: Option<u64>,
+    rows_affected: Option<u64>,
 }
 
 impl Visit for QueryFields {
@@ -58,8 +60,10 @@ impl Visit for QueryFields {
     }
 
     fn record_u64(&mut self, field: &Field, value: u64) {
-        if field.name() == "rows_returned" {
-            self.rows_returned = Some(value);
+        match field.name() {
+            "rows_returned" => self.rows_returned = Some(value),
+            "rows_affected" => self.rows_affected = Some(value),
+            _ => {}
         }
     }
 
@@ -123,11 +127,13 @@ impl<S: Subscriber> Layer<S> for SqlxEventsLayer {
         if let Some(operation) = &operation {
             attributes.push(KeyValue::new(DB_OPERATION_NAME, operation.clone()));
         }
-        if let Some(rows) = fields.rows_returned {
-            attributes.push(KeyValue::new(
-                DB_RESPONSE_RETURNED_ROWS,
-                i64::try_from(rows).unwrap_or(i64::MAX),
-            ));
+        for (key, rows) in [
+            (DB_RESPONSE_RETURNED_ROWS, fields.rows_returned),
+            (LENS_DB_AFFECTED_ROWS, fields.rows_affected),
+        ] {
+            if let Some(rows) = rows {
+                attributes.push(KeyValue::new(key, i64::try_from(rows).unwrap_or(i64::MAX)));
+            }
         }
         let name = match (
             &operation,

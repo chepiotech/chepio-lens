@@ -107,3 +107,75 @@ async fn queries_inside_a_request_become_child_client_spans() {
         "a failing query still gets its span (without an error status, ADR-0008)"
     );
 }
+
+async fn row_counts(State(pool): State<PgPool>) -> StatusCode {
+    // One connection, so the temporary table is visible to every statement and gone afterwards.
+    let mut connection = pool.acquire().await.unwrap();
+    sqlx::query("CREATE TEMP TABLE chepio_lens_sdk_rows (x int)")
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO chepio_lens_sdk_rows VALUES (1), (2), (3)")
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    sqlx::query("SELECT x FROM chepio_lens_sdk_rows")
+        .fetch_all(&mut *connection)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM chepio_lens_sdk_rows WHERE x > 1")
+        .execute(&mut *connection)
+        .await
+        .unwrap();
+    StatusCode::OK
+}
+
+/// Rows returned and rows affected, as the action timeline shows them for the database step (ADR-0016).
+#[tokio::test(flavor = "current_thread")]
+async fn query_spans_carry_rows_returned_and_affected() {
+    let url = std::env::var("DATABASE_URL").expect(
+        "DATABASE_URL must point to Postgres: docker compose -f demo/compose.yaml up -d db",
+    );
+    let pool = PgPool::connect(&url).await.unwrap();
+    let exporter = InMemorySpanExporter::default();
+    let lens = Lens::with_exporter("demo-api", exporter.clone());
+    let _subscriber =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(lens.tracing_layer()));
+    let app = Router::new()
+        .route("/rows", get(row_counts))
+        .with_state(pool)
+        .layer(lens.http_layer());
+
+    let response = app
+        .oneshot(Request::get("/rows").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+
+    let spans = exporter.get_finished_spans().unwrap();
+    let rows = |text: &str| {
+        let span = spans
+            .iter()
+            .find(|span| attribute(span, "db.query.text") == Some(text.to_owned().into()))
+            .unwrap_or_else(|| panic!("no span for {text}: {spans:#?}"));
+        (
+            attribute(span, "db.response.returned_rows"),
+            attribute(span, "lens.db.affected_rows"),
+        )
+    };
+    assert_eq!(
+        rows("INSERT INTO chepio_lens_sdk_rows VALUES (1), (2), (3)"),
+        (Some(0_i64.into()), Some(3_i64.into()))
+    );
+    assert_eq!(
+        rows("SELECT x FROM chepio_lens_sdk_rows"),
+        (Some(3_i64.into()), Some(3_i64.into())),
+        "Postgres reports the rows of a SELECT as affected too"
+    );
+    assert_eq!(
+        rows("DELETE FROM chepio_lens_sdk_rows WHERE x > 1"),
+        (Some(0_i64.into()), Some(2_i64.into()))
+    );
+}
