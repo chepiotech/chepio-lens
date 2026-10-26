@@ -49,6 +49,8 @@ mapped to current names at ingest, once (I8); a current name present in the same
 | `lens.http.request.body.truncated`, `lens.http.response.body.truncated` | bool | SDK | The body was cut |
 | `lens.redaction.count` | int | SDK, collector | Number of values masked on this span or log record |
 | `lens.log.kind` | string | web SDK | `action` for clicks, submits and navigation; other values mean an ordinary log |
+| `lens.action.id` | string | web SDK | 16 hex characters per user action, on its action record and on every fetch span its handler starts synchronously; a navigation inside the handler shares it (ADR-0016) |
+| `lens.db.affected_rows` | int | Rust SDK | Rows the statement affected, as the driver reports them; Postgres counts a `SELECT`'s rows too |
 | `lens.log.truncated` | bool | both SDKs | Some log content was omitted or shortened |
 | resource `lens.node.kind` | string | SDK (optional) | Overrides node kind: `frontend` or `service` |
 | resource `lens.sdk.version` | string | SDK | chepio-lens SDK version |
@@ -97,7 +99,8 @@ let app = Router::new() /* routes */ .layer(lens.http_layer());
   `url.query` is masked. Configuration: `CHEPIO_LENS_CAPTURE_BODIES`, `CHEPIO_LENS_BODY_LIMIT`,
   `CHEPIO_LENS_REDACT_KEYS` (section 4); an invalid value prints a warning and keeps the default.
 - Database spans: from sqlx query events (ADR-0008): `db.system.name`, `server.address`, `server.port`,
-  `db.namespace`, `db.query.text`, `db.operation.name`, `db.response.returned_rows`; no parameter values (ADR-0010).
+  `db.namespace`, `db.query.text`, `db.operation.name`, `db.response.returned_rows`, `lens.db.affected_rows`; no
+  parameter values or row contents (ADR-0010, ADR-0016).
   Without `with_database` the system is `other_sql`. Database spans need `sqlx::query` events at `DEBUG` to reach the SDK's tracing layer; the
   first request prints one warning to stderr when they do not.
 - Application logs: `tracing` events reaching `lens.tracing_layer()` become OTLP logs with severity, target, fields
@@ -138,11 +141,19 @@ const lens = initLens({
 - Console: `debug`, `info`, `log`, `warn`, `error` become logs; `log` maps to info. Original console methods still
   receive the original arguments. Structured arguments are serialized with key masking and fixed limits; getters
   and custom serializers are not invoked. OpenTelemetry diagnostics and export traffic are excluded.
-- Actions: clicks, submits and history/popstate/hashchange navigation become info logs. Labels use accessible names
-  or button/link text, never input values; navigation captures only the pathname. Initialize before registering
-  application handlers. The first fetch started synchronously by an event handler supplies its actual trace/span
-  ids to the action. Handlers after `await`, timers, pre-existing handlers and inline handlers have no promised
-  correlation; the SDK never guesses a link from temporal proximity (ADR-0012). It creates no action spans.
+- Actions: clicks, submits and history/popstate/hashchange navigation become info logs stamped with the event's own
+  time in whole milliseconds (like the browser's span starts), each with a `lens.action.id`. A submit caused by a
+  click on its submit button, or requested from a click handler, belongs to that click: one record. A control
+  (button, link, `role=button`, form) is named by its accessible name or button/link text; any other element, or a
+  control without a name, by a description built from attributes only: tag, id, two classes, `role`, `data-testid`,
+  `name` and position among siblings of the same tag, for the element and its ancestors up to the nearest one with an
+  id, test id or role (five levels; without one, the two nearest), e.g.
+  `click span in li (3 of 12) in ul in section in div#notes`. Never input values or page text; navigation captures
+  only the pathname. Initialize before registering application handlers. Every fetch started synchronously by an
+  event handler gets the action's id, and so does a navigation inside it; the first fetch also supplies its actual
+  trace/span ids to the action record. Handlers after `await`, timers, pre-existing handlers and inline handlers have
+  no promised correlation; the SDK never guesses a link from temporal proximity (ADR-0012, ADR-0016). It creates no
+  action spans.
 - Shutdown restores console and history methods and stops action capture. A single pass-through event-listener
   wrapper remains to preserve listener identity for removal and duplicate registration after shutdown/reinit.
 - Export: OTLP/HTTP JSON to `<endpoint>/v1/traces` and `<endpoint>/v1/logs` with `fetch` (`keepalive`, CORS mode, no credentials), batch every

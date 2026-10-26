@@ -41,7 +41,9 @@ oversized field is replaced whole so a cut JSON prefix cannot leak a sensitive k
 
 The browser console serializer visits at most 128 values, six nesting levels, 32 keys per object and 16 arguments,
 with a 12,000-character working budget and about 12 KiB of UTF-8 output. Action capture queues at most 128 pending
-events, with labels capped at 128 characters and navigation paths at 512; an event is emitted on the next timer turn after synchronous handlers have had a chance to link a fetch.
+events, with accessible names capped at 128 characters, element descriptions at 256 (64 per attribute value) and
+navigation paths at 512; an event is stamped with its own time and emitted on the next timer turn, after synchronous
+handlers have had a chance to link their fetches.
 Export transport diagnostics are excluded to avoid feedback loops (`interfaces.md`).
 
 `POST /v1/logs` shares trace ingest admission, CORS, body and timeout bounds. Decode and recursive redaction run

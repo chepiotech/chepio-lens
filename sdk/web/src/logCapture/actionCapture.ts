@@ -1,9 +1,27 @@
 // Core
 import { context, createContextKey, trace, type Context, type Span } from '@opentelemetry/api'
+// Consts
+import { LENS_ACTION_ID } from '../consts'
 
-type Emit = (body: string, attributes: Record<string, string | boolean>, scope: Context) => void
-type Action = { scope: Context; linked: Context | null; body: string; timer: ReturnType<typeof setTimeout> }
+/** `time`: epoch milliseconds of the action itself. */
+type Emit = (body: string, attributes: Record<string, string | boolean>, scope: Context, time: number) => void
+type Action = {
+  id: string
+  /** The clicked element, kept only while the action is pending: the submit a click on a submit button causes joins it. */
+  target: Element | undefined
+  scope: Context
+  linked: Context | null
+  body: string
+  time: number
+  timer: ReturnType<typeof setTimeout>
+}
 const ACTION = createContextKey('chepio-lens action')
+const CONTROL = 'button,a,input[type="button"],input[type="submit"],[role="button"],form'
+const MAX_NAME = 128
+const MAX_DESCRIPTION = 256
+const MAX_PART = 64
+/** How many ancestors the description climbs looking for one with an id, test id or role. */
+const MAX_ANCESTOR_DEPTH = 5
 
 /** Synchronous event handlers only: never guess that a later async request belongs to the last click. */
 export function captureActions(emit: Emit) {
@@ -15,20 +33,46 @@ export function captureActions(emit: Emit) {
   const finish = (action: Action) => {
     if (!pending.delete(action)) return
     clearTimeout(action.timer)
+    action.target = undefined
     try {
-      if (enabled) emit(action.body, { 'lens.log.kind': 'action' }, action.linked ?? action.scope)
+      if (enabled) emit(action.body, { 'lens.log.kind': 'action', [LENS_ACTION_ID]: action.id }, action.linked ?? action.scope, action.time)
     } catch { /* A dropped log must not interrupt a pending action or shutdown. */ }
   }
   const onAction = (event: Event) => {
     if (!enabled || events.has(event)) return
     try {
       const target = event.composedPath().find((item): item is Element => item instanceof Element)
+      // A click on a submit button submits its form in the same task: one gesture, one action (ADR-0016).
+      const causing = event.type === 'submit' ? causingAction(event) : undefined
+      if (causing) {
+        events.set(event, causing)
+        return
+      }
       const scope = context.active()
-      const action: Action = { scope, linked: null, body: `${event.type} ${accessibleLabel(target)}`, timer: setTimeout(() => finish(action), 0) }
+      const action: Action = {
+        id: actionId(),
+        target: event.type === 'click' ? target : undefined,
+        scope,
+        linked: null,
+        body: `${event.type} ${describeTarget(target)}`,
+        time: eventTime(event),
+        timer: setTimeout(() => finish(action), 0),
+      }
       events.set(event, action)
       pending.add(action)
       if (pending.size > 128) finish(pending.values().next().value!)
     } catch { /* Telemetry metadata must not affect application event handlers. */ }
+  }
+  /** The action a submit belongs to: one whose handler requested it, or the click on its submit button. */
+  const causingAction = (event: Event) => {
+    const inHandler = active()
+    if (inHandler) return inHandler
+    // `requestSubmit()` has no submitter; some DOM implementations report the form itself.
+    const submitter = 'submitter' in event && event.submitter instanceof Element && event.submitter !== event.target ? event.submitter : null
+    for (const action of pending) {
+      if (submitter && action.target && submitter.contains(action.target)) return action
+    }
+    return undefined
   }
   window.addEventListener('click', onAction, true)
   window.addEventListener('submit', onAction, true)
@@ -41,7 +85,9 @@ export function captureActions(emit: Emit) {
       if (enabled) {
         const pathname = location.pathname
         const path = pathname.slice(0, 512)
-        emit(`navigate ${path}`, { 'lens.log.kind': 'action', 'url.path': path, 'lens.log.truncated': path !== pathname }, currentContext())
+        // Inside a click or submit handler the navigation belongs to that action.
+        const id = active()?.id ?? actionId()
+        emit(`navigate ${path}`, { 'lens.log.kind': 'action', [LENS_ACTION_ID]: id, 'url.path': path, 'lens.log.truncated': path !== pathname }, currentContext(), Date.now())
       }
     } catch { /* Preserve successful history calls if capture fails. */ }
   }
@@ -55,7 +101,13 @@ export function captureActions(emit: Emit) {
   window.addEventListener('hashchange', navigate)
   return {
     currentContext,
-    link(span: Span) { const action = active(); if (action && !action.linked) action.linked = trace.setSpanContext(action.scope, span.spanContext()) },
+    // Every fetch the handler starts names its action (ADR-0016); the record keeps the first fetch's context (ADR-0012).
+    link(span: Span) {
+      const action = active()
+      if (!action) return
+      span.setAttribute(LENS_ACTION_ID, action.id)
+      if (!action.linked) action.linked = trace.setSpanContext(action.scope, span.spanContext())
+    },
     stop() {
       for (const action of pending) finish(action)
       enabled = false
@@ -70,14 +122,73 @@ export function captureActions(emit: Emit) {
   }
 }
 
-function accessibleLabel(target: Element | undefined): string {
+/** 16 hex characters, random per action. */
+function actionId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Epoch milliseconds of the event itself, not of the later emit: `timeStamp` counts from the page's time origin.
+ * Whole milliseconds, like the `Date.now()` start of OpenTelemetry's browser spans, so an action is never stamped
+ * after a fetch it started.
+ */
+function eventTime(event: Event): number {
+  const time = Math.floor(performance.timeOrigin + event.timeStamp)
+  return event.timeStamp > 0 && Number.isFinite(time) ? time : Date.now()
+}
+
+/** A control's accessible name, as before; otherwise the element's description. */
+function describeTarget(target: Element | undefined): string {
   if (!target) return 'element'
-  const element = target.closest('button,a,input[type="button"],input[type="submit"],[role="button"],form') ?? target
+  const control = target.closest(CONTROL)
+  return (control ? accessibleName(control) : '') || describeElement(control ?? target)
+}
+
+function accessibleName(element: Element): string {
   const referenced = element.getAttribute('aria-labelledby')?.split(/\s+/).slice(0, 4)
     .map((id) => document.getElementById(id)?.textContent ?? '').join(' ')
   const name = element.getAttribute('aria-label') || referenced ||
-    (element.matches('button,a,[role="button"]') ? element.textContent : '') || element.tagName.toLowerCase()
-  return name.replace(/\s+/g, ' ').trim().slice(0, 128)
+    (element.matches('button,a,[role="button"]') ? element.textContent : '') || ''
+  return name.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME)
+}
+
+/**
+ * Tag, id, two classes, role, test id and name with the position among siblings of the same tag, for the element and
+ * its ancestors up to the nearest one with an id, test id or role, e.g. `span in li (3 of 12) in ul in div#notes`.
+ * Never the element's text: free text is not masked (I2).
+ */
+function describeElement(element: Element): string {
+  const path = [element]
+  for (let current = element.parentElement; current && path.length <= MAX_ANCESTOR_DEPTH; current = current.parentElement) {
+    if (current === document.body || current === document.documentElement) break
+    path.push(current)
+    if (identified(current)) break
+  }
+  // Without an identified ancestor nearby, the two nearest are enough to tell elements apart.
+  const shown = identified(path.at(-1)) ? path : path.slice(0, 3)
+  return shown.map((item) => `${selector(item)}${position(item)}`).join(' in ').slice(0, MAX_DESCRIPTION)
+}
+
+/** ` (2 of 3)` among the parent's children of the same tag; empty when it is the only one. */
+function position(element: Element): string {
+  const siblings = Array.from(element.parentElement?.children ?? []).filter((child) => child.tagName === element.tagName)
+  return siblings.length > 1 ? ` (${siblings.indexOf(element) + 1} of ${siblings.length})` : ''
+}
+
+function selector(element: Element): string {
+  const part = (value: string) => value.slice(0, MAX_PART)
+  let text = element.tagName.toLowerCase()
+  if (element.id) text += `#${part(element.id)}`
+  for (const name of Array.from(element.classList).slice(0, 2)) text += `.${part(name)}`
+  for (const attribute of ['role', 'data-testid', 'name']) {
+    const value = element.getAttribute(attribute)
+    if (value) text += `[${attribute}=${part(value)}]`
+  }
+  return text
+}
+
+function identified(element: Element | undefined): boolean {
+  return Boolean(element && (element.id || element.hasAttribute('data-testid') || element.hasAttribute('role')))
 }
 
 // A single pass-through layer survives shutdown, like OpenTelemetry's fetch wrapper. Keeping the listener identity
