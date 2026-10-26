@@ -103,7 +103,7 @@ const lens = initLens({
   captureBodies: true,                                  // optional; headers are always captured
   bodyLimit: 16_384,                                    // optional, bytes of a masked body
 })
-// await lens.shutdown()                                 // stops tracing, flushes, waits at most 2 s
+// await lens.shutdown()                                 // stops tracing, flushes, waits at most 2 s, never rejects
 ```
 
 - Client spans: one per `fetch` call (OpenTelemetry fetch instrumentation); name `<method>`; attributes
