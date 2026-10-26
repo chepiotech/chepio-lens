@@ -3,6 +3,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 // Services
 import { EVENT, EVENTS_URL, fetchGraph, resetCollector } from '../api/lensApi'
 // Types
+import type { ActivityEventView } from '../api/generated/ActivityEventView'
 import type { EdgeView } from '../api/generated/EdgeView'
 import type { LogEntryView } from '../api/generated/LogEntryView'
 import type { NodeView } from '../api/generated/NodeView'
@@ -20,13 +21,14 @@ export function useLensFeed(
   onRequest: (request: RequestView) => void,
   onLog?: (entry: LogEntryView) => void,
   onResync?: () => void,
+  onActivity?: (event: ActivityEventView) => void,
 ) {
   const [graph, dispatch] = useReducer(graphReducer, emptyGraph)
   const [status, setStatus] = useState<FeedStatus>('connecting')
   const onRequestRef = useRef(onRequest)
   onRequestRef.current = onRequest
-  const listenersRef = useRef({ onLog, onResync })
-  listenersRef.current = { onLog, onResync }
+  const listenersRef = useRef({ onLog, onResync, onActivity })
+  listenersRef.current = { onLog, onResync, onActivity }
   const reloadRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
@@ -67,6 +69,7 @@ export function useLensFeed(
     )
     source.addEventListener(EVENT.request, (event) => onRequestRef.current(JSON.parse(event.data) as RequestView))
     source.addEventListener(EVENT.log, (event) => listenersRef.current.onLog?.(JSON.parse(event.data) as LogEntryView))
+    source.addEventListener(EVENT.activity, (event) => listenersRef.current.onActivity?.(JSON.parse(event.data) as ActivityEventView))
     source.addEventListener(EVENT.resync, () => { void load(); listenersRef.current.onResync?.() })
     return () => {
       generation += 1

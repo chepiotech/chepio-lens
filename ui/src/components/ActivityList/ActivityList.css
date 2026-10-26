@@ -1,0 +1,25 @@
+.activity-list { list-style: none; padding: 0; margin: 0; }
+.activity-list > li { border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+.activity-list .activity-list__row { display: block; width: 100%; text-align: left; padding: 0.625rem 1rem; border: 0; border-radius: 0; background: transparent; }
+.activity-list .activity-list__row[aria-expanded="true"] { background: rgba(255, 255, 255, 0.04); }
+.activity-list__row--error .activity-list__status { color: #f7768e; font-weight: 600; }
+.activity-list__meta, .activity-list__step-meta { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 0.5rem; row-gap: 0.2rem; color: #a3a8b3; font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.activity-list__tag--frontend { color: #7aa2f7; }
+.activity-list__tag--backend { color: #9ece6a; }
+.activity-list__tag--database { color: #e0af68; }
+.activity-list__service { flex: 1; overflow-wrap: anywhere; }
+.activity-list__title { display: block; margin-top: 0.25rem; overflow-wrap: anywhere; }
+.activity-list__steps { padding: 0.25rem 1rem 0.75rem 1.5rem; }
+.activity-list__steps ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid rgba(255, 255, 255, 0.12); }
+.activity-list__step { position: relative; padding: 0.375rem 0 0.375rem 0.75rem; }
+.activity-list__step--error .activity-list__word { color: #f7768e; }
+.activity-list__glyph { color: #e6e8eb; font-weight: 600; }
+.activity-list__step--back .activity-list__glyph { color: #bb9af7; }
+.activity-list__word { color: #e6e8eb; font-weight: 600; }
+.activity-list__offset { margin-left: auto; }
+.activity-list__text { display: block; margin-top: 0.2rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.activity-list__detail { margin-top: 0.25rem; font-size: 0.75rem; }
+.activity-list__detail > summary { cursor: pointer; color: #a3a8b3; }
+.activity-list__detail pre { margin: 0.25rem 0 0; padding: 0.5rem; max-height: 16rem; overflow: auto; background: rgba(0, 0, 0, 0.25); white-space: pre-wrap; overflow-wrap: anywhere; }
+.activity-list__inspect { margin-top: 0.25rem; font-size: 0.75rem; }
+.activity-list__note { margin: 0.25rem 0; color: #a3a8b3; font-size: 0.75rem; }

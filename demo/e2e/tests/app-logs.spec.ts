@@ -1,5 +1,7 @@
 // Core
 import { expect, test, type APIRequestContext } from '@playwright/test'
+// Utils
+import { openLogLines } from './support/collector'
 
 const lens = 'http://localhost:4320'
 const demo = 'http://localhost:5173'
@@ -28,7 +30,7 @@ test('React click links to its request; an async continuation does not inherit a
   }).toBe(true)
   const map = await context.newPage()
   await map.goto(lens)
-  await map.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(map)
   await map.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('action')
   await map.getByRole('list', { name: 'Log entries' }).getByRole('button').filter({ hasText: 'click Log in' }).click()
   await expect(map.getByRole('region', { name: 'Log record' })).toContainText('User action')
@@ -58,7 +60,7 @@ test('console logs keep levels, mask structured arguments and render malicious t
   const map = await context.newPage()
   let dialogs = 0; map.on('dialog', async dialog => { dialogs++; await dialog.dismiss() })
   await map.goto(lens)
-  await map.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(map)
   await map.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('log')
   await map.getByRole('combobox', { name: 'Level', exact: true }).selectOption('warn')
   const entries = map.getByRole('list', { name: 'Log entries' }).getByRole('button')
@@ -73,7 +75,7 @@ test('console logs keep levels, mask structured arguments and render malicious t
 test('standalone backend logs arrive live and remain inspectable without a request', async ({ page, request }) => {
   await request.post(`${lens}/api/reset`)
   await page.goto(lens)
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(page)
   const result = await request.post('http://localhost:4318/v1/logs', { data: {
     resourceLogs: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'log-worker' } }] }, scopeLogs: [{ logRecords: [{
       timeUnixNano: (BigInt(Date.now()) * 1_000_000n).toString(), severityNumber: 17, body: { stringValue: 'worker-job-failed' },
@@ -93,7 +95,7 @@ test('standalone backend logs arrive live and remain inspectable without a reque
 test('expanded filters leave a readable log window on a narrow screen', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto(lens)
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await openLogLines(page)
   await page.getByText('More filters', { exact: true }).click()
   await page.getByRole('combobox', { name: 'Kind', exact: true }).selectOption('log')
   await page.getByRole('combobox', { name: 'Level', exact: true }).selectOption('warn')

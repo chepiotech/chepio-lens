@@ -37,3 +37,6 @@
   .logs-panel__filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .investigation-panel--bottom .logs-panel__filter-grid { flex-basis: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+.logs-panel__views { display: flex; gap: 0.25rem; }
+.logs-panel__views button[aria-pressed="true"] { color: #e6e8eb; border-color: currentColor; }
+.logs-panel__views button[aria-pressed="false"] { opacity: 0.6; }
