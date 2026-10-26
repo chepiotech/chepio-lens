@@ -19,7 +19,7 @@ REQUIRED = {BINARY, LICENSE} | {EVIDENCE + name for name in [
     'Cargo.lock', 'chepio-lens.sha256', 'rustc.txt', 'musl-origin.txt', 'native.cdx.json',
 ]}
 # Docker adds these to a container even when its image is scratch.
-DOCKER_FILES = {'.dockerenv', 'etc/hosts', 'etc/hostname', 'etc/resolv.conf'}
+DOCKER_FILES = {'.dockerenv', 'dev/console', 'etc/hosts', 'etc/hostname', 'etc/resolv.conf'}
 
 
 def check_elf(binary, architecture):
@@ -51,7 +51,10 @@ def check_elf(binary, architecture):
 
 def check_files(files, architecture, expected_lock):
     if not REQUIRED <= files.keys() or files.keys() - REQUIRED - DOCKER_FILES:
-        raise ValueError('Runtime contains missing or unexpected files')
+        raise ValueError('Runtime contains missing or unexpected files: missing=' + str(sorted(REQUIRED - files.keys()))
+                         + ', extra=' + str(sorted(files.keys() - REQUIRED - DOCKER_FILES)))
+    if any(files.get(name, b'') for name in ['.dockerenv', 'dev/console']):
+        raise ValueError('Docker runtime placeholder must be empty')
     binary = files[BINARY]
     check_elf(binary, architecture)
     if files[EVIDENCE + 'chepio-lens.sha256'].decode().strip() != hashlib.sha256(binary).hexdigest():

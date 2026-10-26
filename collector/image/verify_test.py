@@ -6,7 +6,7 @@ import struct
 import tarfile
 import unittest
 # Utils
-from verify import BINARY, EVIDENCE, LICENSE, ROOT, check_elf, check_files, read_files
+from verify import BINARY, DOCKER_FILES, EVIDENCE, LICENSE, ROOT, check_elf, check_files, read_files
 
 
 def binary(kind=1, architecture=183):
@@ -36,6 +36,13 @@ def fixture():
 
 
 class ImageVerificationTests(unittest.TestCase):
+    def test_accepts_docker_created_files_but_rejects_nonempty_placeholders(self):
+        files = fixture() | {name: b'' for name in DOCKER_FILES}
+        check_files(files, 'arm64', b'locked dependencies')
+        for name in ['dev/console', '.dockerenv']:
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'placeholder'):
+                check_files(files | {name: b'unexpected content'}, 'arm64', b'locked dependencies')
+
     def test_docker_mount_table_link_is_the_only_permitted_symlink(self):
         for name, target, allowed in [
             ('etc/mtab', '/proc/mounts', True),
