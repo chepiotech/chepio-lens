@@ -61,7 +61,7 @@ test('one Delete is one action whose steps go there and back with real data; a c
 
   const map = await context.newPage()
   await map.goto(LENS)
-  await map.getByRole('button', { name: 'Logs', exact: true }).click()
+  await map.getByRole('button', { name: 'Console', exact: true }).click()
   const rows = map.getByRole('list', { name: 'Actions' }).locator(':scope > li > button')
   await expect(rows.filter({ hasText: 'click Delete' })).toHaveCount(1)
   await rows.filter({ hasText: 'click Delete' }).click()

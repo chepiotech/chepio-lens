@@ -437,6 +437,7 @@ pub(crate) mod tests {
             service: Service {
                 name: service.into(),
                 kind: ServiceKind::Service,
+                metadata: None,
             },
             kind,
             name: format!("span {id}"),

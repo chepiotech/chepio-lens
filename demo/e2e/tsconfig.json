@@ -3,9 +3,11 @@
   "include": [
     "tests",
     "perf",
+    "map-cards",
     "sdk-overhead",
     "playwright.config.ts",
     "playwright.perf.config.ts",
+    "playwright.map-cards.config.ts",
     "playwright.sdk-overhead.config.ts"
   ]
 }

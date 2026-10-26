@@ -57,7 +57,8 @@ sdk/web ──▶ conventions/testdata (tests only)
 - The UI talks only to the collector UI API, never to OTLP or the SDKs.
 - `conventions` has no I/O and no dependency on OpenTelemetry SDK crates, so both the collector and the Rust SDK can
   use it.
-- The web SDK reimplements redaction in TypeScript and must pass the same test vectors as the Rust implementation.
+- The web SDK reimplements redaction and node-metadata normalization in TypeScript and must pass the same test
+  vectors as the Rust implementation.
 
 ## Collector internals (hexagonal)
 
@@ -76,11 +77,35 @@ Layers follow the global import groups; arrows show allowed imports.
 
 ## UI internals
 
-- React renders the logs panel, request inspector, toolbar and page footer with `<ChepioTechFooter />`.
+- React renders the logs panel, request inspector, floating canvas controls and page footer with
+  `<ChepioTechFooter />`. The live and example maps have no page header or introductory copy. The top-left console
+  icon opens the activity panel; the top-right settings icon opens a centered native modal dialog, with General,
+  Console and Map sections. Connection status, session reset, example/live navigation, console docking, node focus
+  and the packet legend are available there. Zoom and fit controls use icons on the canvas. Settings support
+  keyboard tab navigation, modal focus containment, Escape, backdrop dismissal and focus return to the opener.
 - The map is one `<canvas>` driven by a renderer module outside React's render cycle (ADR-0006). React passes state
   in and receives selection events out. `ui/src/map/`: `layoutGraph` (deterministic columns), `geometry` (camera,
   curves, hit-testing), `graphState` (snapshot + events), `MapRenderer` (canvas drawing and input); only the
   renderer touches the canvas, so the rest is unit-tested.
+- Node cards share a calculated height with layout, hit-testing and camera fitting. Frontends have browser chrome,
+  framework strips and optional microfrontend sections; services list incoming endpoints; Redis database nodes
+  render as caches, with dashed cache links. Incoming route statistics are aggregated across callers. Navigation
+  paths come only from frontend action records' `url.path`, never outgoing API URLs, and are held in memory
+  (32 paths per node, 200 nodes, 160 characters per path; query and fragment removed). This is observed navigation
+  while the map is open, not discovery of an application's complete router manifest.
+- Both SDKs declare technology, page and microfrontend metadata in their settings, exported as an optional OTLP
+  resource attribute. The collector normalizes it, shares it across records in a batch, and carries it into snapshot
+  nodes and SSE updates. The contract and limits are in `interfaces.md`. Cards combine declared pages with observed
+  navigation; microfrontends and remaining shell pages have separate sections. Unknown stacks are labeled as
+  unreported. Redis and PostgreSQL marks come from `db_system`; the example provides explicit React/Vue and
+  Rust/axum/SQLx metadata. There is no automatic dependency or framework discovery.
+- `Example map` in settings opens `?example=architecture`: an isolated illustrative graph, with no collector
+  requests or writes, including when its console or settings are open. Settings identify the illustrative source;
+  its console links to the live map for real requests. It uses the live renderer, selection details and accessible
+  summary. The Map settings node picker centers and enlarges a node at any viewport width. Map keyboard controls:
+  left/right inspect nodes, +/- zoom, 0 fits, Escape clears selection.
+  Local Devicon SVGs retain their MIT license and are emitted as files (no data URLs), honoring the collector CSP.
+  Build the UI, then run `pnpm --filter demo-e2e map-cards` for isolated desktop/mobile browser checks.
 - Packet icons: `requestPulses` places each hop on screen and decides when its request arrives and its response
   leaves (before and after the calls nested in it); `packets` picks the icon, colour and label for a hop's request and
   response and for log and action flashes at nodes; `MapRenderer` draws them as `Path2D` strokes. The icon outlines
@@ -90,9 +115,11 @@ Layers follow the global import groups; arrows show allowed imports.
   snapshot. Events received during a snapshot request are buffered by node/edge id and merged when it completes,
   keeping the higher edge call count so a slow snapshot cannot restore an old error. A newer load, reset or
   unmount invalidates the previous load.
-- The activity panel docks right or bottom; only its dock and dimensions are stored in `localStorage`. Log and
-  request contents stay in memory. Edge selection opens its filtered log; a line selects its trace and span in the
-  inspector. Per-route edge statistics remain available above the log.
+- The activity panel overlays the entire page (including the footer) on the left, right or bottom. Opening,
+  resizing and closing it do not resize the canvas or change its camera. Placement changes only in Console
+  settings; the panel itself has a close button and a resize edge. Its placement, dimensions and selected
+  Actions/Lines view are stored in `localStorage`. Log and request contents stay in memory. Edge selection opens its filtered log; a line selects
+  its trace and span in the inspector. Per-route edge statistics remain available above the log.
 - `useLogs` reads filtered pages from `GET /api/logs`; SSE log/request events coalesce refreshes so edge linking and
   filter semantics remain on the collector. Filters cancel previous loads. The list is bounded and pauses live
   updates while the reader visits earlier lines (`runtime.md`).

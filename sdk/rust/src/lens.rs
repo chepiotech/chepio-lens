@@ -25,9 +25,10 @@ use crate::client::ClientLayer;
 use crate::database::Database;
 use crate::http::HttpLayer;
 use crate::sqlx_events::SqlxEventsLayer;
+use chepio_lens_conventions::node_metadata::NodeMetadata;
 use chepio_lens_conventions::redaction::Redactor;
 // Consts
-use chepio_lens_conventions::keys::LENS_SDK_VERSION;
+use chepio_lens_conventions::keys::{LENS_NODE_METADATA, LENS_SDK_VERSION};
 
 /// Every 500 ms instead of OpenTelemetry's 5 s, so the map stays live (`docs/architecture/runtime.md`).
 const EXPORT_INTERVAL: Duration = Duration::from_millis(500);
@@ -46,6 +47,8 @@ const REDACT_KEYS_VAR: &str = "CHEPIO_LENS_REDACT_KEYS";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub service_name: String,
+    /// Declared map-card contents. Normalized once, then shared by trace and log resources.
+    pub node: Option<NodeMetadata>,
     /// Collector OTLP base URL, e.g. `http://localhost:4318`. `None` turns the SDK into a no-op.
     pub endpoint: Option<String>,
     /// Capture request and response bodies of text content types; headers are always captured.
@@ -60,6 +63,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             service_name: "unknown_service".to_owned(),
+            node: None,
             endpoint: None,
             capture_bodies: true,
             body_limit: DEFAULT_BODY_LIMIT,
@@ -96,6 +100,9 @@ impl Config {
         };
         Self {
             service_name: service_name.to_owned(),
+            node: var("CHEPIO_LENS_NODE_METADATA")
+                .as_deref()
+                .and_then(NodeMetadata::from_json),
             endpoint: var(ENDPOINT_VAR).filter(|endpoint| !endpoint.trim().is_empty()),
             capture_bodies,
             body_limit,
@@ -171,9 +178,10 @@ pub fn init_with(config: Config) -> Result<Lens, InitError> {
     let processor = BatchSpanProcessor::builder(exporter)
         .with_batch_config(batch)
         .build();
+    let app_resource = resource(&config);
     let provider = SdkTracerProvider::builder()
         .with_span_processor(processor)
-        .with_resource(resource(&config.service_name))
+        .with_resource(app_resource.clone())
         .build();
     let log_exporter = LogExporter::builder()
         .with_http()
@@ -193,18 +201,21 @@ pub fn init_with(config: Config) -> Result<Lens, InitError> {
         .build();
     let logs = SdkLoggerProvider::builder()
         .with_log_processor(log_processor)
-        .with_resource(resource(&config.service_name))
+        .with_resource(app_resource)
         .build();
     let mut lens = Lens::from_provider(provider, config.capture());
     Arc::make_mut(lens.inner.as_mut().unwrap()).logs = Some(logs);
     Ok(lens)
 }
 
-fn resource(service_name: &str) -> Resource {
-    Resource::builder()
-        .with_service_name(service_name.to_owned())
-        .with_attribute(KeyValue::new(LENS_SDK_VERSION, env!("CARGO_PKG_VERSION")))
-        .build()
+fn resource(config: &Config) -> Resource {
+    let mut builder = Resource::builder()
+        .with_service_name(config.service_name.clone())
+        .with_attribute(KeyValue::new(LENS_SDK_VERSION, env!("CARGO_PKG_VERSION")));
+    if let Some(node) = &config.node {
+        builder = builder.with_attribute(KeyValue::new(LENS_NODE_METADATA, node.to_json()));
+    }
+    builder.build()
 }
 
 /// Whether `sqlx::query` events at `DEBUG` reach any tracing layer. When they do not, there are no database spans.
@@ -247,7 +258,7 @@ impl Lens {
         Self::from_provider(
             SdkTracerProvider::builder()
                 .with_simple_exporter(exporter)
-                .with_resource(resource(&config.service_name))
+                .with_resource(resource(&config))
                 .build(),
             config.capture(),
         )
@@ -333,5 +344,50 @@ impl Lens {
             })
             .join();
         }
+    }
+}
+
+#[cfg(test)]
+mod metadata_tests {
+    // Core
+    use super::*;
+
+    #[test]
+    fn configured_node_metadata_is_normalized_in_the_resource() {
+        let config = Config {
+            node: Some(NodeMetadata {
+                technologies: vec!["Rust".into(), "axum".into()],
+                pages: vec!["/notes?token=fake".into()],
+                ..Default::default()
+            }),
+            ..Config::default()
+        };
+        let metadata = resource(&config)
+            .get(&opentelemetry::Key::new(LENS_NODE_METADATA))
+            .unwrap()
+            .to_string();
+        let decoded = NodeMetadata::from_json(&metadata).unwrap();
+        assert_eq!(decoded.technologies, ["rust", "axum"]);
+        assert_eq!(decoded.pages, ["/notes"]);
+        assert!(!metadata.contains("token"));
+    }
+
+    #[test]
+    fn metadata_environment_is_optional_and_invalid_values_are_ignored() {
+        let config = Config::from_env("api", |key| {
+            (key == "CHEPIO_LENS_NODE_METADATA")
+                .then(|| r#"{"technologies":["Rust","axum"]}"#.into())
+        });
+        assert_eq!(config.node.unwrap().technologies, ["rust", "axum"]);
+        assert!(
+            Config::from_env("api", |_| Some("invalid".into()))
+                .node
+                .is_none()
+        );
+        assert!(
+            resource(&Config::default())
+                .get(&opentelemetry::Key::new(LENS_NODE_METADATA))
+                .is_none()
+        );
     }
 }

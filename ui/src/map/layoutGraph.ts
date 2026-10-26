@@ -3,10 +3,11 @@ import type { EdgeView } from '../api/generated/EdgeView'
 import type { NodeView } from '../api/generated/NodeView'
 
 export type Point = { x: number; y: number }
+export type NodeSize = { width: number; height: number }
 
-export const NODE_WIDTH = 176
-export const NODE_HEIGHT = 56
-const COLUMN_GAP = 160
+export const NODE_WIDTH = 340
+export const NODE_HEIGHT = 320
+const COLUMN_GAP = 208
 const ROW_GAP = 40
 
 /**
@@ -14,7 +15,7 @@ const ROW_GAP = 40
  * Inside a column nodes are sorted by id, so the same graph always gets the same positions and nodes never jump.
  * Positions are node centers in world coordinates; columns are centered on y = 0.
  */
-export function layoutGraph(nodes: NodeView[], edges: EdgeView[]): Map<string, Point> {
+export function layoutGraph(nodes: NodeView[], edges: EdgeView[], sizes: Map<string, NodeSize> = new Map()): Map<string, Point> {
   const depth = serviceDepths(nodes, edges)
   const serviceColumns = Math.max(0, ...depth.values()) + 1
   const column = (node: NodeView): number => {
@@ -42,12 +43,15 @@ export function layoutGraph(nodes: NodeView[], edges: EdgeView[]): Map<string, P
   const positions = new Map<string, Point>()
   used.forEach((columnIndex, slot) => {
     const ids = (columns.get(columnIndex) ?? []).sort()
-    const height = ids.length * NODE_HEIGHT + (ids.length - 1) * ROW_GAP
-    ids.forEach((id, row) => {
+    const height = ids.reduce((sum, id) => sum + (sizes.get(id)?.height ?? NODE_HEIGHT), 0) + (ids.length - 1) * ROW_GAP
+    let top = -height / 2
+    ids.forEach((id) => {
+      const nodeHeight = sizes.get(id)?.height ?? NODE_HEIGHT
       positions.set(id, {
         x: slot * (NODE_WIDTH + COLUMN_GAP),
-        y: -height / 2 + NODE_HEIGHT / 2 + row * (NODE_HEIGHT + ROW_GAP),
+        y: top + nodeHeight / 2,
       })
+      top += nodeHeight + ROW_GAP
     })
   })
   return positions

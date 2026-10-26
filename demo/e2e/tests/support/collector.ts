@@ -12,7 +12,7 @@ export async function showLogLines(page: Page) {
 }
 
 export async function openLogLines(page: Page) {
-  await page.getByRole('button', { name: 'Logs', exact: true }).click()
+  await page.getByRole('button', { name: 'Console', exact: true }).click()
   await showLogLines(page)
 }
 

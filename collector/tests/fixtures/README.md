@@ -16,3 +16,7 @@ preflights from the demo web's origin, and the demo web must call `initLens` wit
 `grpc_chain.json` is synthetic OTLP/JSON: browser → gateway → gRPC identity → PostgreSQL. The RPC uses current
 client and legacy server attributes; both have HTTP 200 and an INTERNAL RPC status, with no explicit span error.
 API tests also send a later successful variant and reverse batch order to check recovery and normalization.
+
+`node_metadata.json` is synthetic OTLP/JSON based on `demo_trace.json`, with declared React/Vue microfrontends,
+Rust/axum/SQLx technologies, fake page query values and a Redis client span. API tests send JSON and protobuf forms,
+check normalized node metadata and the backend → Redis edge, then exercise log-resource metadata updates over SSE.

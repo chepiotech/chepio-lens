@@ -1,5 +1,7 @@
 // Core
+use chepio_lens_conventions::node_metadata::NodeMetadata;
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum NodeKind {
@@ -77,6 +79,7 @@ pub struct Node {
     pub label: String,
     pub db: Option<DbTarget>,
     pub external: Option<ExternalTarget>,
+    pub metadata: Option<Arc<NodeMetadata>>,
     pub first_seen_ns: u64,
     pub last_seen_ns: u64,
 }

@@ -11,3 +11,9 @@
 .map-view:active {
   cursor: grabbing;
 }
+
+.map-view:focus-visible { outline: 2px solid #8bb9ff; outline-offset: -3px; }
+.map-view__controls { position: absolute; right: 1rem; bottom: 1rem; display: flex; gap: 0.25rem; padding: 0.25rem; background: #171b23; border: 1px solid #343c49; border-radius: 0.5rem; }
+.map-view__controls button { display: grid; place-items: center; height: 2.75rem; width: 2.75rem; padding: 0; color: #dbe3ef; background: transparent; border: 0; border-radius: 0.25rem; cursor: pointer; }
+.map-view__controls button:hover { background: #2c3543; }
+.map-view__controls button:focus-visible { outline: 2px solid #8bb9ff; outline-offset: 1px; }

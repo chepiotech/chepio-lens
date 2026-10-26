@@ -1,0 +1,23 @@
+.canvas-controls__button {
+  position: absolute;
+  top: 1rem;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid #343c49;
+  border-radius: 0.75rem;
+  background: #171b23;
+  color: #c6ceda;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+.canvas-controls__button--console { left: 1rem; }
+.canvas-controls__button--settings { right: 1rem; }
+.canvas-controls__button:hover { background: #252c37; color: #fff; }
+.canvas-controls__button[aria-expanded='true'] { background: #29364a; color: #a9cbff; }
+.canvas-controls__button:active { background: #303b4b; }
+.canvas-controls__button:focus-visible { outline: 2px solid #8bb9ff; outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { .canvas-controls__button { transition: none; } }

@@ -4,4 +4,5 @@
 pub mod grpc;
 pub mod keys;
 pub mod legacy;
+pub mod node_metadata;
 pub mod redaction;

@@ -20,8 +20,9 @@ import { type CaptureConfig, DEFAULT_BODY_LIMIT, captureRequest, captureResponse
 import { Redactor } from './redaction'
 // Services
 import { captureLogs } from './logCapture/logCapture'
+import { normalizeNodeMetadata, type NodeMetadata } from './nodeMetadata/nodeMetadata'
 // Consts
-import { LENS_REDACTION_COUNT, LENS_SDK_VERSION, SDK_VERSION } from './consts'
+import { LENS_NODE_METADATA, LENS_REDACTION_COUNT, LENS_SDK_VERSION, SDK_VERSION } from './consts'
 
 /** Every 500 ms instead of OpenTelemetry's 5 s, so the map stays live (docs/architecture/runtime.md). */
 const EXPORT_INTERVAL_MS = 500
@@ -43,6 +44,8 @@ const EXPORT_TIMEOUT_MS = 2_000
 
 export type LensOptions = {
   serviceName: string
+  /** Declared technologies, page paths and microfrontends shown inside the service's map card. */
+  node?: NodeMetadata
   /** Collector OTLP base URL, e.g. `http://localhost:4318`. Empty or missing turns the SDK into a no-op. */
   endpoint?: string
   /** Cross-origin URLs that get `traceparent`; same-origin requests always do. Each target must allow the header. */
@@ -93,10 +96,13 @@ export function initLens(options: LensOptions): Lens {
     timeoutMillis: EXPORT_TIMEOUT_MS,
     concurrencyLimit: EXPORT_CONCURRENCY,
   })
+  const node = normalizeNodeMetadata(options.node)
+  const resource = defaultResource().merge(resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: options.serviceName, [LENS_SDK_VERSION]: SDK_VERSION,
+    ...(node ? { [LENS_NODE_METADATA]: JSON.stringify(node) } : {}),
+  }))
   const provider = new TracerProvider({
-    resource: defaultResource().merge(
-      resourceFromAttributes({ [ATTR_SERVICE_NAME]: options.serviceName, [LENS_SDK_VERSION]: SDK_VERSION }),
-    ),
+    resource,
     spanProcessors: [
       new RedactingProcessor(redactor),
       new BatchSpanProcessor({
@@ -115,7 +121,7 @@ export function initLens(options: LensOptions): Lens {
   // picks the span up there and clones the response before the app can consume it.
   const logsUrl = new URL('v1/logs', endpoint.endsWith('/') ? endpoint : `${endpoint}/`).href
   const logProvider = new LoggerProvider({
-    resource: defaultResource().merge(resourceFromAttributes({ [ATTR_SERVICE_NAME]: options.serviceName, [LENS_SDK_VERSION]: SDK_VERSION })),
+    resource,
     processors: [new BatchLogRecordProcessor({
       exporter: new OTLPLogExporter({ url: logsUrl, timeoutMillis: EXPORT_TIMEOUT_MS, concurrencyLimit: EXPORT_CONCURRENCY }),
       scheduledDelayMillis: EXPORT_INTERVAL_MS, maxExportBatchSize: EXPORT_BATCH_SPANS,

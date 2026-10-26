@@ -1,8 +1,11 @@
 .details-panel {
   position: absolute;
-  top: 1rem;
+  top: 4.5rem;
   right: 1rem;
   width: min(20rem, calc(100% - 2rem));
+  box-sizing: border-box;
+  max-height: calc(100% - 5.5rem);
+  overflow-y: auto;
   padding: 0.75rem 1rem 1rem;
   background: #1a1d24;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -64,3 +67,5 @@
 .details-panel__routes ul { list-style: none; padding: 0; margin: 0; }
 .details-panel__routes li { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem 0; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 0.75rem; overflow-wrap: anywhere; }
 .details-panel__routes span { color: #a3a8b3; }
+.details-panel__routes p { color: #aab2c0; font-size: 0.75rem; line-height: 1.5; }
+.details-panel__close:focus-visible { outline: 2px solid #8bb9ff; outline-offset: 2px; }

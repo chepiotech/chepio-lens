@@ -1,0 +1,5 @@
+.example-map__console { margin: auto; padding: 2rem; max-width: 22rem; line-height: 1.6; }
+.example-map__console p { margin: 0 0 0.75rem; }
+.example-map__console p + p { color: #aeb6c3; }
+.example-map__console a { display: inline-block; padding-block: 0.5rem; color: #a9cbff; text-underline-offset: 0.25em; }
+.example-map__console a:focus-visible { outline: 2px solid #8bb9ff; outline-offset: 3px; }

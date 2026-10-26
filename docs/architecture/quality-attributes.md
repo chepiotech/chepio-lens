@@ -129,10 +129,11 @@ Measurement run (2026-10-26, same machine, release builds, load average 16–20 
 | Level | What | Where |
 |---|---|---|
 | Unit | Graph derivation, linking in any arrival order, legacy-name mapping, redaction, bounds and eviction | `conventions/`, `collector/src/domain/` |
-| Shared vectors | The same redaction input/output cases pass in Rust and TypeScript | `conventions/testdata/`, used by `sdk/web` tests |
+| Shared vectors | The same redaction and declared-node-metadata input/output cases pass in Rust and TypeScript | `conventions/testdata/`, used by `sdk/web` tests |
 | Integration | Recorded OTLP fixtures (protobuf and JSON) posted to the ingest handler → expected graph and requests from the UI API; SSE resync | `collector/tests/` |
 | SDK | Spans and payload attributes produced for a test axum app and a mocked `fetch`; app unaffected when the endpoint is unreachable | `sdk/rust/tests/`, `sdk/web` |
 | UI | Layout, event application, selection; renderer logic separated from canvas calls so it is testable | `ui/` (Vitest) |
+| Map cards | Built UI under the collector CSP at desktop/mobile widths; technology assets, microfrontends, Redis, controls, legacy snapshots and metadata events | `demo/e2e/map-cards/`; `pnpm --filter ui build && pnpm --filter demo-e2e map-cards` |
 | End-to-end | Demo app + collector in compose: a script drives the API and checks `/api/graph`; Playwright clicks in the demo and checks the map's text summary and that the request is animated once | `demo/e2e/` |
 | Security | Demo login secrets never reach the collector unmasked; an HTML/JS payload in a body renders as text | `demo/e2e/tests/payload-security.spec.ts` (real demo login and note), SDK payload tests, collector redaction tests |
 
@@ -170,3 +171,31 @@ bodies on added +0.03–0.04 ms p50 / +0.17–0.24 ms p95. Database-specific p95
 this short run does not resolve them reliably (one bare slot reached p95 56 ms, one unreachable slot 118 ms).
 It meets the mixed-workload 1 ms budget, but does not establish a per-database-route tail-latency guarantee.
 This measures the shared server body observer regression; it is not a client transport throughput benchmark.
+
+## Detailed node cards
+
+2026-10-26, same local machine/Chromium setup: `pnpm --filter demo-e2e perf`. The 50-node, 100-edge graph now has
+declared frontend frameworks, shell pages and two microfrontends per frontend; backend Rust/axum/SQLx/Tokio stacks,
+incoming routes, PostgreSQL and Redis. The existing 200 concurrent requests and node flashes remain enabled. The
+camera fits the whole graph, using compact card contents below the renderer's detail threshold.
+
+| Device pixel ratio | Frames / 10 s | Draw p50 / p95 / max, ms | Frame interval p50 / p95 / max, ms | Late frames |
+|---|---|---|---|---|
+| 1 | 600 | 3.00 / 4.30 / 13.80 | 16.70 / 16.80 / 33.30 | 1 |
+| 2 | 582 | 3.10 / 6.50 / 44.50 | 16.70 / 16.80 / 100.00 | 8 |
+
+The JavaScript draw p95 stays below the 16.67 ms frame budget. This run had occasional late frames and does not
+establish a no-dropped-frame guarantee; canvas rasterization is not included in draw timings. Desktop/mobile
+browser checks cover expanded cards separately, including selection near the bottom of a taller frontend.
+
+The real SDK → collector → UI chain was checked using native debug collector/API binaries, the demo Vite server
+and PostgreSQL in Docker on the standard loopback ports: five database calls appeared within 0.44 s; the browser
+confirmed the declared React and Rust/axum/SQLx/Tokio stacks. All 14 existing browser scenarios passed, alongside
+four isolated map-card scenarios. The full Docker rebuild was not completed in this validation run.
+
+Integration with the action timeline (2026-10-26): workspace Rust fmt/clippy/all-feature tests, 169 TypeScript tests,
+workspace typechecks and the npm archive install check pass. The built UI passes 14 isolated desktop/mobile
+scenarios and all 15 collector-backed browser scenarios against the current native demo binaries, including
+action steps, metadata, redaction and HTTP/gRPC error recovery. The same frame-time harness passes the 16.67 ms
+draw-p95 budget at DPR 1 and 2 after integration. These browser checks use Chromium and an emulated narrow
+viewport; they do not establish physical-device or other-engine coverage.

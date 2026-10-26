@@ -129,8 +129,9 @@ describe('browser actions (ADR-0016)', () => {
     expect(action.traceId).toBe(first.traceId)
   })
 
-  it('stamps an action with the time of the event, before the fetch it starts', async () => {
+  it.each([0, 1_000])('stamps an action before its fetch with the event clock %i ms ahead', async (offset) => {
     const net = network(); start()
+    vi.spyOn(performance, 'timeOrigin', 'get').mockReturnValue(performance.timeOrigin + offset)
     const button = document.createElement('button'); button.textContent = 'Save'; document.body.append(button)
     button.addEventListener('click', () => { void fetch('/save') })
     button.click()

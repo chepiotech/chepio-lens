@@ -56,6 +56,11 @@ pub struct LogRecord {
 impl LogRecord {
     pub fn approx_size(&self) -> usize {
         128 + self.service.name.len()
+            + self
+                .service
+                .metadata
+                .as_ref()
+                .map_or(0, |metadata| metadata.approx_size())
             + self.body.approx_size()
             + self
                 .attributes

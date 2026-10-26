@@ -3,12 +3,14 @@
 
 // Core
 use chepio_lens_conventions::grpc;
+use chepio_lens_conventions::keys::LENS_NODE_METADATA;
 use chepio_lens_conventions::keys::{
     HTTP_RESPONSE_STATUS_CODE, LENS_NODE_KIND, SERVER_PORT, SERVICE_NAME, TELEMETRY_SDK_LANGUAGE,
     URL_PATH, URL_QUERY,
 };
 use chepio_lens_conventions::keys::{RPC_METHOD, RPC_RESPONSE_STATUS_CODE, RPC_SYSTEM_NAME};
 use chepio_lens_conventions::legacy;
+use chepio_lens_conventions::node_metadata::NodeMetadata;
 use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTracePartialSuccess, ExportTraceServiceRequest, ExportTraceServiceResponse,
 };
@@ -16,6 +18,7 @@ use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
 use opentelemetry_proto::tonic::trace::v1::span::SpanKind as ProtoSpanKind;
 use opentelemetry_proto::tonic::trace::v1::status::StatusCode;
 use prost::Message;
+use std::sync::Arc;
 // Domain
 use crate::domain::span::{
     AttrValue, Attributes, Service, Span, SpanEvent, SpanId, SpanKind, Status, TraceId,
@@ -53,11 +56,14 @@ impl ProtoCodec {
                     }
                 })
             };
-            let service = Service::from_resource(
+            let mut service = Service::from_resource(
                 resource_str(SERVICE_NAME),
                 resource_str(TELEMETRY_SDK_LANGUAGE),
                 resource_str(LENS_NODE_KIND),
             );
+            service.metadata = resource_str(LENS_NODE_METADATA)
+                .and_then(NodeMetadata::from_json)
+                .map(Arc::new);
             for scope_spans in resource_spans.scope_spans {
                 for span in scope_spans.spans {
                     let (Some(trace_id), Some(span_id)) = (

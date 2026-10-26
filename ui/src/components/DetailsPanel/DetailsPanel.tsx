@@ -5,18 +5,22 @@ import type { Selection } from '../../map/MapRenderer'
 import './DetailsPanel.css'
 // Utils
 import { formatMs } from '../../map/formatMs'
+import { technologyLabel, nodeCard, type NodeCatalog } from '../../map/nodeCards/nodeCards'
 
 type Props = {
   graph: GraphState
   selection: NonNullable<Selection>
   onClose: () => void
   inline?: boolean
+  catalog?: NodeCatalog
 }
 
 /** Facts about the selected node or edge, as plain text (I11). */
-function DetailsPanel({ graph, selection, onClose, inline = false }: Props) {
+function DetailsPanel({ graph, selection, onClose, inline = false, catalog }: Props) {
   const rows = selection.kind === 'node' ? nodeRows(graph, selection.id) : edgeRows(graph, selection.id)
   if (!rows) return null
+  const node = selection.kind === 'node' ? graph.nodes[selection.id] : undefined
+  const card = node ? nodeCard(node, Object.values(graph.edges), catalog?.[node.id]) : null
   return (
     <aside className={`details-panel${inline ? ' details-panel--inline' : ''}`} aria-label="Selection details">
       <header className="details-panel__header">
@@ -33,6 +37,25 @@ function DetailsPanel({ graph, selection, onClose, inline = false }: Props) {
           </div>
         ))}
       </dl>
+      {card && <section className="details-panel__routes" aria-label="Technology stack">
+        <h3>{card.kind === 'frontend' ? 'Frameworks' : 'Technologies'}</h3>
+        <p>{card.technologies.length ? card.technologies.map((technology) => technologyLabel(technology)).join(' · ') : 'Technology not reported'}</p>
+      </section>}
+      {Boolean(card?.microfrontends.length) && <section className="details-panel__routes" aria-label="Microfrontends">
+        <h3>Microfrontends</h3>
+        <ul>{card!.microfrontends.map((microfrontend) => <li key={microfrontend.name}>
+          <strong>{microfrontend.name} · {technologyLabel(microfrontend.framework)}</strong>
+          {microfrontend.pages.map((page) => <code key={page}>{page}</code>)}
+        </li>)}</ul>
+      </section>}
+      {card && <section className="details-panel__routes" aria-label={card.section}>
+        <h3>{card.section} · {card.rows.length}</h3>
+        {card.rows.length === 0 ? <p>{card.empty}</p> : <ul>{card.rows.map((row) => <li key={`${row.tag}:${row.label}`}>
+          <code>{row.tag} {row.label}</code>
+          {row.count !== undefined && <span>{row.count} calls</span>}
+        </li>)}</ul>}
+        {card.kind === 'frontend' && <p>Declared SDK pages and navigation observed while this map is open.</p>}
+      </section>}
       {selection.kind === 'edge' && Boolean(graph.edges[selection.id]?.routes.length) && <section aria-label="Calls by route" className="details-panel__routes">
         <h3>Calls by route</h3>
         <ul>{graph.edges[selection.id]!.routes.map((route) => <li key={route.route}>
@@ -50,7 +73,7 @@ function nodeRows(graph: GraphState, id: string): Rows | null {
   const node = graph.nodes[id]
   if (!node) return null
   const items: [string, string][] = [
-    ['Kind', node.kind],
+    ['Kind', nodeCard(node, []).role],
     ['Id', node.id],
   ]
   if (node.db_system) items.push(['Database', node.db_system])

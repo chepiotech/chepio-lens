@@ -1,7 +1,7 @@
 // Core
 import { afterEach, describe, expect, it, vi } from 'vitest'
 // Utils
-import { PANEL_DEFAULTS, readPanelPreferences, savePanelPreferences } from './panelPreferences'
+import { clampPanelSize, PANEL_DEFAULTS, readPanelPreferences, savePanelPreferences } from './panelPreferences'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -15,5 +15,14 @@ describe('panel preferences', () => {
     vi.stubGlobal('localStorage', { getItem: () => '{invalid', setItem: () => { throw new Error('denied') } })
     expect(readPanelPreferences()).toEqual(PANEL_DEFAULTS)
     expect(() => savePanelPreferences(PANEL_DEFAULTS)).not.toThrow()
+  })
+
+  it('remembers left placement with the same width limits as right placement', () => {
+    let stored = ''
+    vi.stubGlobal('localStorage', { getItem: () => stored, setItem: (_key: string, value: string) => { stored = value } })
+    savePanelPreferences({ dock: 'left', width: 600, height: 360 })
+    expect(readPanelPreferences()).toEqual({ dock: 'left', width: 600, height: 360 })
+    expect(clampPanelSize(0, 'left')).toBe(340)
+    expect(clampPanelSize(2_000, 'left')).toBe(1_000)
   })
 })

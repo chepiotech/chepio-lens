@@ -1,0 +1,173 @@
+[
+  {
+    "name": "backend identifiers",
+    "input": {
+      "technologies": [
+        "Rust",
+        "axum",
+        "SQLx",
+        "rust",
+        "tokio",
+        42
+      ]
+    },
+    "expected": {
+      "technologies": [
+        "rust",
+        "axum",
+        "sqlx",
+        "tokio"
+      ],
+      "pages": [],
+      "microfrontends": []
+    }
+  },
+  {
+    "name": "pages and microfrontends",
+    "input": {
+      "technologies": [
+        "ReactJS",
+        "VueJS"
+      ],
+      "pages": [
+        "/",
+        "/notes?token=fake#detail",
+        "https://example.test",
+        "//other.test",
+        "/notes"
+      ],
+      "microfrontends": [
+        {
+          "name": "Workspace",
+          "framework": "VueJS",
+          "pages": [
+            "/settings?password=fake"
+          ]
+        },
+        {
+          "name": "Admin",
+          "framework": "angular",
+          "pages": [
+            "/admin"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "technologies": [
+        "react",
+        "vue"
+      ],
+      "pages": [
+        "/",
+        "/notes"
+      ],
+      "microfrontends": [
+        {
+          "name": "Workspace",
+          "framework": "vue",
+          "pages": [
+            "/settings"
+          ]
+        },
+        {
+          "name": "Admin",
+          "framework": "angular",
+          "pages": [
+            "/admin"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "wrong shapes and unsafe labels",
+    "input": {
+      "technologies": [
+        "<script>",
+        "react\n",
+        "C#",
+        null
+      ],
+      "pages": "/invalid",
+      "microfrontends": [
+        {
+          "name": "API",
+          "framework": "rust"
+        },
+        {
+          "name": " ",
+          "framework": "react"
+        },
+        {
+          "name": "Notes",
+          "framework": "react",
+          "pages": [
+            "/ok",
+            "/bad\npath"
+          ]
+        },
+        {
+          "name": "Notes",
+          "framework": "vue"
+        }
+      ]
+    },
+    "expected": {
+      "technologies": [
+        "react",
+        "c#"
+      ],
+      "pages": [],
+      "microfrontends": [
+        {
+          "name": "Notes",
+          "framework": "react",
+          "pages": [
+            "/ok"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "prototype names and UTF-8 boundaries",
+    "input": {
+      "technologies": [
+        "__proto__",
+        "constructor",
+        "K"
+      ],
+      "pages": [
+        "/яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя"
+      ],
+      "microfrontends": [
+        {
+          "name": "ЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯ",
+          "framework": "React",
+          "pages": [
+            "/кабинет?token=fake"
+          ]
+        }
+      ]
+    },
+    "expected": {
+      "technologies": [
+        "__proto__",
+        "constructor"
+      ],
+      "pages": [
+        "/яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя"
+      ],
+      "microfrontends": [
+        {
+          "name": "ЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯЯ",
+          "framework": "react",
+          "pages": [
+            "/кабинет"
+          ]
+        }
+      ]
+    }
+  }
+]

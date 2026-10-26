@@ -1,11 +1,11 @@
 // Core
 import { useCallback, useEffect, useRef, useState } from 'react'
 // Components
+import CanvasControls from '../CanvasControls/CanvasControls'
 import ChepioTechFooter from '../ChepioTechFooter/ChepioTechFooter'
 import DetailsPanel from '../DetailsPanel/DetailsPanel'
 import InvestigationPanel from '../InvestigationPanel/InvestigationPanel'
 import LogsPanel from '../LogsPanel/LogsPanel'
-import MapLegend from '../MapLegend/MapLegend'
 import MapSummary from '../MapSummary/MapSummary'
 import MapView, { type MapHandle } from '../MapView/MapView'
 import RequestInspector, { type RequestSelection } from '../RequestInspector/RequestInspector'
@@ -28,8 +28,7 @@ import { pulsesFor } from '../../map/requestPulses'
 import { DEFAULT_FILTERS } from '../../logs/logState'
 import { readLogsView, saveLogsView } from '../../activities/activityState'
 import { readPanelPreferences, savePanelPreferences } from '../InvestigationPanel/panelPreferences'
-
-const STATUS_TEXT = { connecting: 'Connecting…', live: 'Live', offline: 'Collector offline' } as const
+import { observePage, type NodeCatalog } from '../../map/nodeCards/nodeCards'
 
 function App() {
   const mapRef = useRef<MapHandle>(null)
@@ -42,6 +41,7 @@ function App() {
   const [session, setSession] = useState(0)
   const [resetting, setResetting] = useState(false)
   const [resetError, setResetError] = useState(false)
+  const [catalog, setCatalog] = useState<NodeCatalog>({})
   const [logsView, setLogsView] = useState<LogsView>(readLogsView)
   // Only the shown view loads; both follow the same filters.
   const logs = useLogs(filters, panelOpen && logsView === 'lines', session)
@@ -59,6 +59,7 @@ function App() {
   }, [logs.invalidate, requestSelection?.traceId])
   // Each log line refreshes the panel; log records and user actions also flash at their nodes on the map.
   const onLog = useCallback((entry: LogEntryView) => {
+    setCatalog((previous) => observePage(previous, entry))
     logs.invalidate()
     mapRef.current?.flash(entry)
   }, [logs.invalidate])
@@ -68,8 +69,6 @@ function App() {
     activities.pause()
     setRequestSelection({ traceId: step.trace_id, spanId: step.span_id })
   }
-  const nodeCount = Object.keys(graph.nodes).length
-  const edgeCount = Object.keys(graph.edges).length
   const select = (next: Selection) => {
     setSelection(next)
     if (next?.kind === 'edge') {
@@ -84,6 +83,7 @@ function App() {
     try {
       await reset()
       setSelection(null)
+      setCatalog({})
       setRequestSelection(null)
       setFilters(DEFAULT_FILTERS)
       setSession((value) => value + 1)
@@ -94,34 +94,14 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app__header">
-        <h1 className="app__title">chepio-lens</h1>
-        <span className={`app__status app__status--${status}`} role="status">
-          {STATUS_TEXT[status]}
-        </span>
-        <span className="app__counts">
-          {nodeCount} nodes · {edgeCount} edges
-        </span>
-        <button
-          type="button"
-          className="app__reset"
-          aria-expanded={panelOpen}
-          onClick={() => setPanelOpen((value) => !value)}
-        >
-          Logs
-        </button>
-        <button type="button" className="app__reset" disabled={resetting} onClick={() => { void resetAll() }}
-        >
-          {resetting ? 'Resetting…' : 'Reset'}
-        </button>
-      </header>
-      {resetError && <p className="app__error" role="alert">Reset failed. Check the collector connection and try again.</p>}
-      <main className={`app__main${panelOpen ? ` app__main--${preferences.dock}` : ''}`}>
+      <main className="app__main">
         <div className="app__map">
-          <MapView ref={mapRef} graph={graph} selection={selection} onSelect={select} />
-          <MapSummary graph={graph} />
-          <MapLegend />
-          {selection?.kind === 'node' && <DetailsPanel graph={graph} selection={selection} onClose={() => setSelection(null)} />}
+          <MapView ref={mapRef} graph={graph} catalog={catalog} selection={selection} onSelect={select} />
+          <MapSummary graph={graph} catalog={catalog} />
+          <CanvasControls graph={graph} status={status} consoleOpen={panelOpen} onToggleConsole={() => setPanelOpen((value) => !value)}
+            preferences={preferences} onPreferences={setPreferences} resetting={resetting} resetError={resetError}
+            onReset={() => { void resetAll() }} onFocusNode={(id) => { setSelection(null); mapRef.current?.focusNode(id) }} />
+          {selection?.kind === 'node' && <DetailsPanel graph={graph} catalog={catalog} selection={selection} onClose={() => setSelection(null)} />}
         </div>
         {panelOpen && <InvestigationPanel preferences={preferences} onPreferences={setPreferences} onClose={() => setPanelOpen(false)}>
           {!requestSelection && selection?.kind === 'edge' && filters.edge === selection.id && <details className="app__edge-details">

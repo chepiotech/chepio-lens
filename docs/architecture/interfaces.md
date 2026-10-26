@@ -53,9 +53,34 @@ mapped to current names at ingest, once (I8); a current name present in the same
 | `lens.db.affected_rows` | int | Rust SDK | Rows the statement affected, as the driver reports them; Postgres counts a `SELECT`'s rows too |
 | `lens.log.truncated` | bool | both SDKs | Some log content was omitted or shortened |
 | resource `lens.node.kind` | string | SDK (optional) | Overrides node kind: `frontend` or `service` |
+| resource `lens.node.metadata` | JSON string | both SDKs (optional) | Declared technology stack, page paths and microfrontends for the map card; shape and limits below |
 | resource `lens.sdk.version` | string | SDK | chepio-lens SDK version |
 
 The collector ignores unknown `lens.*` attributes, so an older collector accepts spans from a newer SDK.
+
+### Declared node metadata
+
+`lens.node.metadata` is optional on trace and log resources. It is an object with `technologies: string[]`,
+`pages: string[]` and `microfrontends: { name: string, framework: string, pages: string[] }[]`; missing lists become
+empty. Both SDKs normalize settings once during initialization and share the resource between traces and logs.
+The collector normalizes again before storing metadata, once per resource batch. This declares the application's
+stack; it does not inspect dependencies or discover routers.
+
+Normalization is defined in `conventions/src/node_metadata.rs` and checked against the web implementation with
+`conventions/testdata/node_metadata.json`. Limits: 16 technologies (48 UTF-8 bytes each), 8 microfrontends (64 bytes
+per name), and 32 page paths in total across the shell and all microfrontends (160 bytes each). Limits apply to
+input prefixes; invalid entries and duplicates are omitted. Technology identifiers use lowercase ASCII letters,
+digits, spaces and `. + # _ -`; `reactjs`, `vuejs`, `next.js`, `nuxtjs` normalize to `react`, `vue`, `nextjs`, `nuxt`.
+Frontend framework identifiers are `react`, `vue`, `angular`, `svelte`, `solid`, `preact`, `nextjs`, `nuxt`, `qwik`.
+Backend technologies may use any valid identifier. Page paths start with `/` but not `//`; query strings and
+fragments are removed. Use static labels and route templates, never credentials or user-specific page content.
+
+Malformed, non-object or over-16-KiB wire metadata is ignored without rejecting telemetry. The latest valid report
+received for a service replaces its metadata and emits an SSE `node` update. Missing/invalid reports preserve
+existing metadata; `{}` explicitly clears it. Services sharing a name should declare the same metadata. Old SDKs
+remain usable and show an unreported stack. Redis uses ordinary database client spans with `db.system.name=redis`;
+the UI presents that database node as a cache. Declaring `redis` in a backend's stack alone does not invent a node
+or an edge.
 
 ## 2. SDK public API
 
@@ -110,7 +135,17 @@ let app = Router::new() /* routes */ .layer(lens.http_layer());
   out (`sdk/rust/tests/install_tracing_levels.rs`). Telemetry-internal events and HTTP transport targets (`hyper`, `hyper_util`, `h2`, `reqwest`) are excluded
   from this export layer to prevent export loops; other subscriber layers remain unchanged. Transport exclusions
   also apply to those libraries when used by the app. Without an active context a log remains uncorrelated.
-- Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*`.
+- Resource: `service.name`, `lens.sdk.version`, optional `lens.node.metadata`, and OpenTelemetry's `telemetry.sdk.*`.
+- Map card settings can come from `CHEPIO_LENS_NODE_METADATA` or typed `Config.node`. For example:
+
+```rust
+let mut config = chepio_lens_sdk::Config::from_env("demo-api", |key| std::env::var(key).ok());
+config.node = Some(chepio_lens_sdk::NodeMetadata {
+    technologies: vec!["rust".into(), "axum".into(), "sqlx".into(), "tokio".into()],
+    ..Default::default()
+});
+let lens = chepio_lens_sdk::init_with(config)?;
+```
 
 Browser:
 
@@ -124,6 +159,14 @@ const lens = initLens({
   redactKeys: ['tenant'],                               // optional, added to the defaults
   captureBodies: true,                                  // optional; headers are always captured
   bodyLimit: 16_384,                                    // optional, bytes of a masked body
+  node: {                                              // optional, static map-card metadata
+    technologies: ['react'],
+    pages: ['/'],                                       // shell pages
+    microfrontends: [
+      { name: 'Notes', framework: 'react', pages: ['/notes', '/notes/:id'] },
+      { name: 'Workspace', framework: 'vue', pages: ['/settings'] },
+    ],
+  },
 })
 // await lens.shutdown()                                 // stops tracing, flushes, waits at most 2 s, never rejects
 ```
@@ -160,7 +203,7 @@ const lens = initLens({
   500 ms, separate queues of 2,048 spans and 2,048 logs, timeout 2 s; export requests are not traced. An endpoint that is not a URL prints one
   console warning and leaves the SDK off; `initLens` never throws. A second call while running returns the running
   instance.
-- Resource: `service.name`, `lens.sdk.version`, and OpenTelemetry's `telemetry.sdk.*` (`telemetry.sdk.language =
+- Resource: `service.name`, `lens.sdk.version`, optional `lens.node.metadata`, and OpenTelemetry's `telemetry.sdk.*` (`telemetry.sdk.language =
   webjs`, so the collector draws a frontend node).
 
 ## 3. UI API (collector → UI)
@@ -187,6 +230,10 @@ touched with its start offset and duration on the request's timeline, used for a
 one per stored span or app/action record, the same shape as an entry of `GET /api/logs`), `activity` (a new or changed
 activity, `{ activity, replaces }`: drop the rows named in `replaces`, they were merged into this one), `resync` (the client fell behind and must fetch
 `/api/graph` again).
+
+Snapshot nodes and SSE `node` events include optional `metadata: { technologies, pages, microfrontends }`, using
+the normalized shape above. It is omitted when no metadata was reported, including infrastructure nodes. The UI
+combines declared pages with navigation observed while the map is open; endpoints come from incoming edge routes.
 
 Each hop has a `packet` for the map's packet icons, or `null` when its caller span is no longer stored:
 `kind` (`http`, `https`, `sql`, `grpc`), `operation` (HTTP method or SQL operation in upper case; qualified gRPC method,
@@ -231,6 +278,7 @@ that ordering. Neither export delay nor animation duration is included in `last_
 |---|---|---|---|
 | `CHEPIO_LENS_ENDPOINT` | Rust SDK | unset (SDK off) | Collector OTLP base URL, e.g. `http://localhost:4318` |
 | `VITE_CHEPIO_LENS_ENDPOINT` (or the app's own env) | web SDK via app config | unset (SDK off) | Same, for the browser |
+| `CHEPIO_LENS_NODE_METADATA` (Rust: `Config.node`; web: `node`) | SDKs | absent | Optional declared node metadata; malformed environment JSON is silently ignored. See Declared node metadata above |
 | `CHEPIO_LENS_CAPTURE_BODIES` (web: `captureBodies` option) | both SDKs | `true` | Capture request and response bodies (`true`/`1`, `false`/`0`); headers are always captured |
 | `CHEPIO_LENS_BODY_LIMIT` (web: `bodyLimit` option) | both SDKs | `16384` bytes | Max exported bytes per redacted body |
 | `CHEPIO_LENS_REDACT_KEYS` | SDKs, collector | empty | Extra keys to mask, comma-separated; added to the defaults in `security.md` |

@@ -50,7 +50,7 @@ impl Graph {
         }
     }
 
-    /// Creates the service's node on its first span; later spans only move `last_seen`.
+    /// Creates the service node; later reports update its declared card metadata and `last_seen`.
     pub fn observe_service(&mut self, service: &Service, now: Now, changes: &mut Changes) -> bool {
         self.ensure_node(service_node(service, now), changes)
     }
@@ -97,6 +97,10 @@ impl Graph {
     fn ensure_node(&mut self, node: Node, changes: &mut Changes) -> bool {
         if let Some(existing) = self.nodes.get_mut(&node.id) {
             existing.last_seen_ns = node.last_seen_ns;
+            if node.metadata.is_some() && existing.metadata != node.metadata {
+                existing.metadata = node.metadata;
+                changes.nodes.insert(node.id);
+            }
             return true;
         }
         if self.nodes.len() >= self.limits.max_nodes {
@@ -147,6 +151,7 @@ fn node(id: String, kind: NodeKind, label: String, now: Now) -> Node {
         label,
         db: None,
         external: None,
+        metadata: None,
         first_seen_ns: now.unix_ns,
         last_seen_ns: now.unix_ns,
     }
@@ -157,12 +162,14 @@ fn service_node(service: &Service, now: Now) -> Node {
         ServiceKind::Frontend => NodeKind::Frontend,
         ServiceKind::Service => NodeKind::Service,
     };
-    node(
+    let mut node = node(
         service_node_id(&service.name),
         kind,
         service.name.clone(),
         now,
-    )
+    );
+    node.metadata.clone_from(&service.metadata);
+    node
 }
 
 fn db_node(db: &DbTarget, now: Now) -> Node {

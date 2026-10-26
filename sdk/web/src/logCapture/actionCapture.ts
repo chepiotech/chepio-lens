@@ -129,12 +129,13 @@ function actionId(): string {
 
 /**
  * Epoch milliseconds of the event itself, not of the later emit: `timeStamp` counts from the page's time origin.
- * Whole milliseconds, like the `Date.now()` start of OpenTelemetry's browser spans, so an action is never stamped
- * after a fetch it started.
+ * Whole milliseconds, like the `Date.now()` start of OpenTelemetry's browser spans. Clamp to the capture clock:
+ * the monotonic time origin can drift ahead of wall time, but an action cannot happen after its handler starts.
  */
 function eventTime(event: Event): number {
   const time = Math.floor(performance.timeOrigin + event.timeStamp)
-  return event.timeStamp > 0 && Number.isFinite(time) ? time : Date.now()
+  const captured = Date.now()
+  return event.timeStamp > 0 && Number.isFinite(time) ? Math.min(time, captured) : captured
 }
 
 /** A control's accessible name, as before; otherwise the element's description. */

@@ -28,7 +28,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Before the pool, so the startup migrations show up too.
     #[cfg(feature = "lens")]
     let lens = {
-        let lens = chepio_lens_sdk::init("demo-api")?
+        let mut config = chepio_lens_sdk::Config::from_env("demo-api", |name| env::var(name).ok());
+        config
+            .node
+            .get_or_insert_with(|| chepio_lens_sdk::NodeMetadata {
+                technologies: ["rust", "axum", "sqlx", "tokio"]
+                    .map(str::to_owned)
+                    .to_vec(),
+                ..Default::default()
+            });
+        let lens = chepio_lens_sdk::init_with(config)?
             .with_database(chepio_lens_sdk::Database::postgres_url(&database_url));
         lens.install_tracing()?;
         lens

@@ -1006,6 +1006,7 @@ mod tests {
         span.service = Service {
             name: "web".into(),
             kind: ServiceKind::Frontend,
+            metadata: None,
         };
         span
     }
@@ -1085,6 +1086,7 @@ mod tests {
                 time_ns,
                 service: Service {
                     name: service.into(),
+                    metadata: None,
                     kind: if kind == "action" {
                         ServiceKind::Frontend
                     } else {

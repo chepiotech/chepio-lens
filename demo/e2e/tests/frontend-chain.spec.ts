@@ -17,7 +17,9 @@ test('one click in the demo shows web → api → postgres on the map, animated 
 
   const map = await context.newPage()
   await map.goto(LENS)
+  await map.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(map.getByRole('status')).toHaveText('Live')
+  await map.getByRole('button', { name: 'Close settings' }).click()
   const summary = map.getByRole('region', { name: 'Map as text' })
   const canvas = map.locator('canvas')
 
@@ -31,6 +33,9 @@ test('one click in the demo shows web → api → postgres on the map, animated 
   await expect(summary).toContainText('demo-api → postgresql demo: 1 call, 0 errors', { timeout: 5_000 })
   const visibleMs = Date.now() - clickedAt
   await expect(summary).toContainText('demo-web (frontend)')
+  await expect(summary).toContainText('technologies: React')
+  await expect(summary).toContainText('technologies: Rust, axum, SQLx, Tokio')
+  await expect(summary).toContainText('Pages: PAGE /')
   test.info().annotations.push({ type: 'visible after', description: `${visibleMs} ms` })
   expect(visibleMs, 'request end → visible on the map').toBeLessThanOrEqual(BUDGET_MS)
 
@@ -51,14 +56,18 @@ test('the arrow recovers after an error and shows the last call instead of sessi
     target.edgeLabels = {}
     const fillText = CanvasRenderingContext2D.prototype.fillText
     CanvasRenderingContext2D.prototype.fillText = function (...args: Parameters<typeof fillText>) {
-      if (args[0].startsWith('Last ')) {
+      if (args[0].startsWith('HTTP · Last ')) {
         target.edgeLabels.latest = { text: args[0], color: String(this.fillStyle), stroke: String(this.strokeStyle) }
+      } else if (/^\d+ calls?$/.test(args[0])) {
+        target.edgeLabels.calls = { text: args[0], color: String(this.fillStyle), stroke: String(this.strokeStyle) }
       }
       return fillText.apply(this, args)
     }
   })
   await page.goto(lens)
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('status')).toHaveText('Live')
+  await page.getByRole('button', { name: 'Close settings' }).click()
 
   const send = async (id: number, startMs: number, durationMs: number, error: boolean) => {
     const start = 1_760_000_000_000_000_000n + BigInt(startMs) * 1_000_000n
@@ -84,25 +93,25 @@ test('the arrow recovers after an error and shows the last call instead of sessi
   }
   const painted = () => page.evaluate(() => (window as unknown as {
     edgeLabels: Record<string, { text: string; color: string; stroke: string }>
-  }).edgeLabels.latest)
+  }).edgeLabels).then((labels) => labels.latest ? { ...labels.latest, text: `${labels.latest.text} · ${labels.calls?.text}` } : undefined)
   const summary = page.getByRole('region', { name: 'Map as text' })
 
   await send(1, 0, 700, true)
-  await expect.poll(painted).toEqual({ text: 'Last 700 ms · error · 1 call', color: '#f7768e', stroke: '#f7768e' })
+  await expect.poll(painted).toEqual({ text: 'HTTP · Last 700 ms · error · 1 call', color: '#f7768e', stroke: '#f7768e' })
   await send(2, 1_000, 0.06, false)
   await expect(summary).toContainText('2 calls, 1 errors')
-  await expect.poll(async () => (await painted())?.text).toBe('Last 0.06 ms · 2 calls')
+  await expect.poll(async () => (await painted())?.text).toBe('HTTP · Last 0.06 ms · 2 calls')
   expect((await painted())?.color).not.toBe('#f7768e')
   expect((await painted())?.stroke).not.toBe('#f7768e')
   // An older failure arriving after recovery still contributes to history, but cannot restore stale status.
   await send(3, 100, 2, true)
   await expect(summary).toContainText('3 calls, 2 errors')
-  await expect.poll(async () => (await painted())?.text).toBe('Last 0.06 ms · 3 calls')
+  await expect.poll(async () => (await painted())?.text).toBe('HTTP · Last 0.06 ms · 3 calls')
   expect((await painted())?.color).not.toBe('#f7768e')
   expect((await painted())?.stroke).not.toBe('#f7768e')
 
   await send(4, 2_000, 2, true)
-  await expect.poll(painted).toEqual({ text: 'Last 2.0 ms · error · 4 calls', color: '#f7768e', stroke: '#f7768e' })
+  await expect.poll(painted).toEqual({ text: 'HTTP · Last 2.0 ms · error · 4 calls', color: '#f7768e', stroke: '#f7768e' })
 
   // A graph snapshot requested at connection time can finish after a newer successful SSE event.
   let releaseSnapshot: () => void = () => {}
@@ -122,6 +131,6 @@ test('the arrow recovers after an error and shows the last call instead of sessi
   releaseSnapshot()
   await (await snapshotReceived).finished()
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-  expect((await painted())?.text).toBe('Last 0.06 ms · 5 calls')
+  expect((await painted())?.text).toBe('HTTP · Last 0.06 ms · 5 calls')
   expect((await painted())?.stroke).not.toBe('#f7768e')
 })

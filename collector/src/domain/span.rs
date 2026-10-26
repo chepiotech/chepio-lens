@@ -1,6 +1,8 @@
 // Core
+use chepio_lens_conventions::node_metadata::NodeMetadata;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 
 use chepio_lens_conventions::grpc;
 use chepio_lens_conventions::keys::{
@@ -147,6 +149,7 @@ pub enum ServiceKind {
 pub struct Service {
     pub name: String,
     pub kind: ServiceKind,
+    pub metadata: Option<Arc<NodeMetadata>>,
 }
 
 /// OpenTelemetry's name for a resource without `service.name`.
@@ -172,6 +175,7 @@ impl Service {
         Self {
             name: name.to_owned(),
             kind,
+            metadata: None,
         }
     }
 }
@@ -264,7 +268,15 @@ impl Span {
                         .sum::<usize>()
             })
             .sum();
-        128 + self.name.len() + self.service.name.len() + size(&self.attributes) + events
+        128 + self.name.len()
+            + self.service.name.len()
+            + self
+                .service
+                .metadata
+                .as_ref()
+                .map_or(0, |metadata| metadata.approx_size())
+            + size(&self.attributes)
+            + events
     }
 }
 

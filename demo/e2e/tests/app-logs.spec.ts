@@ -88,7 +88,12 @@ test('standalone backend logs arrive live and remain inspectable without a reque
   await expect(page.getByRole('region', { name: 'Log record' })).toContainText('[REDACTED]')
   await expect(page.getByRole('region', { name: 'Log record' })).toContainText('Log truncated')
   await expect(page.getByRole('region', { name: 'Request inspector' })).toContainText('This log has no request context.')
+  await page.getByRole('button', { name: 'Close logs panel' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('button', { name: 'Reset', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Reset', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Close settings' }).click()
+  await page.getByRole('button', { name: 'Console', exact: true }).click()
   await expect(page.getByRole('list', { name: 'Log entries' }).getByRole('button')).toHaveCount(0)
 })
 

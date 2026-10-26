@@ -6,24 +6,21 @@ import type { NodeView } from '../api/generated/NodeView'
 import { formatMs } from './formatMs'
 import { type Camera, distanceToCurve, edgeCurve, fitCamera, insideNode, pointOnCurve, toWorld, zoomAt } from './geometry'
 import { type LucideIcon, lucideIcons } from './icons/lucideIcons'
-import { NODE_HEIGHT, NODE_WIDTH, type Point, layoutGraph } from './layoutGraph'
+import { NODE_HEIGHT, NODE_WIDTH, type NodeSize, type Point, layoutGraph } from './layoutGraph'
 import { FLASH_MS, type Glyph, PACKET_COLORS, flashGlyph, packetName, packetPhase, requestGlyph, responseGlyph } from './packets'
 import type { Pulse } from './requestPulses'
+import { nodeCard, nodeKind, type NodeCard, type NodeCatalog } from './nodeCards/nodeCards'
+import { drawNodeCard, loadTechnologyLogos } from './nodeCards/drawNodeCard'
 
 export type Selection = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null
 
 const COLORS = {
   background: '#0f1115',
-  grid: 'rgba(255, 255, 255, 0.03)',
-  node: '#1a1d24',
-  nodeBorder: 'rgba(255, 255, 255, 0.12)',
   selected: '#e6e8eb',
-  text: '#e6e8eb',
   muted: 'rgba(230, 232, 235, 0.55)',
   edge: 'rgba(230, 232, 235, 0.28)',
   error: '#f7768e',
   pulse: '#7dcfff',
-  kind: { frontend: '#7aa2f7', service: '#9ece6a', database: '#e0af68', external: '#a9b1d6' },
 } as const
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
@@ -49,6 +46,9 @@ export class MapRenderer {
   private nodes: NodeView[] = []
   private edges: EdgeView[] = []
   private positions = new Map<string, Point>()
+  private cards = new Map<string, NodeCard>()
+  private sizes = new Map<string, NodeSize>()
+  private readonly logos = loadTechnologyLogos(() => { this.dirty = true })
   private pulses: ActivePulse[] = []
   private flashes: ActiveFlash[] = []
   private readonly iconPaths = new Map<LucideIcon, Path2D[]>()
@@ -80,16 +80,36 @@ export class MapRenderer {
     this.frame = requestAnimationFrame(this.loop)
   }
 
-  setGraph(nodes: NodeView[], edges: EdgeView[]) {
+  setGraph(nodes: NodeView[], edges: EdgeView[], catalog: NodeCatalog = {}) {
     this.nodes = nodes
     this.edges = edges
-    this.positions = layoutGraph(nodes, edges)
+    this.cards = new Map(nodes.map((node) => [node.id, nodeCard(node, edges, catalog[node.id])]))
+    this.sizes = new Map([...this.cards].map(([id, card]) => [id, { width: NODE_WIDTH, height: card.height }]))
+    this.positions = layoutGraph(nodes, edges, this.sizes)
     this.invalidate(!this.userMoved)
   }
 
   setSelection(selection: Selection) {
     this.selection = selection
     this.invalidate(false)
+  }
+
+  fit() { this.userMoved = false; this.invalidate(true) }
+
+  zoom(factor: number) {
+    this.userMoved = true
+    this.camera = zoomAt(this.camera, { x: this.canvas.clientWidth / 2, y: this.canvas.clientHeight / 2 }, factor)
+    this.dirty = true
+  }
+
+  focusNode(id: string) {
+    const point = this.positions.get(id)
+    if (!point) return
+    const height = this.sizes.get(id)?.height ?? NODE_HEIGHT
+    const scale = Math.min(1, (this.canvas.clientWidth - 32) / NODE_WIDTH, (this.canvas.clientHeight - 144) / height)
+    this.camera = { scale: Math.max(0.25, scale), x: this.canvas.clientWidth / 2 - point.x * Math.max(0.25, scale), y: this.canvas.clientHeight / 2 - point.y * Math.max(0.25, scale) }
+    this.userMoved = true
+    this.dirty = true
   }
 
   /** Animates one request: per hop its request icon out and its response icon back, timed by `pulsesFor`. */
@@ -130,7 +150,7 @@ export class MapRenderer {
   }
 
   private invalidate(refit: boolean) {
-    if (refit) this.camera = fitCamera([...this.positions.values()], this.canvas.clientWidth, this.canvas.clientHeight)
+    if (refit) this.camera = fitCamera([...this.positions].map(([id, position]) => ({ ...position, ...this.sizes.get(id) })), this.canvas.clientWidth, this.canvas.clientHeight)
     this.dirty = true
   }
 
@@ -185,13 +205,16 @@ export class MapRenderer {
     if (!curve) return
     const { ctx } = this
     const selected = this.selection?.kind === 'edge' && this.selection.id === edge.id
+    const cache = this.nodes.some((node) => node.id === edge.to && nodeKind(node) === 'cache')
     const [p0, p1, p2, p3] = curve
-    ctx.strokeStyle = selected ? COLORS.selected : edge.last_error ? COLORS.error : COLORS.edge
+    ctx.strokeStyle = selected ? COLORS.selected : edge.last_error ? COLORS.error : cache ? '#b17d76' : COLORS.edge
     ctx.lineWidth = selected ? 2.5 : 1.5
+    ctx.setLineDash(cache ? [5, 5] : [])
     ctx.beginPath()
     ctx.moveTo(p0.x, p0.y)
     ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y)
     ctx.stroke()
+    ctx.setLineDash([])
     // Arrowhead at the target.
     ctx.fillStyle = ctx.strokeStyle
     ctx.beginPath()
@@ -207,7 +230,8 @@ export class MapRenderer {
     ctx.fillStyle = edge.last_error ? COLORS.error : COLORS.muted
     const calls = `${edge.count} ${edge.count === 1 ? 'call' : 'calls'}`
     // High enough that a packet icon passing the middle does not cover it.
-    ctx.fillText(`Last ${formatMs(edge.last_duration_ms)}${edge.last_error ? ' · error' : ''} · ${calls}`, middle.x, middle.y - 15)
+    ctx.fillText(`${cache ? 'CACHE' : edge.protocol.toUpperCase()} · Last ${formatMs(edge.last_duration_ms)}${edge.last_error ? ' · error' : ''}`, middle.x, middle.y - 19)
+    ctx.fillText(calls, middle.x, middle.y + 24)
   }
 
   private drawPulse(pulse: ActivePulse, now: number) {
@@ -244,7 +268,7 @@ export class MapRenderer {
       const rise = this.reducedMotion?.matches ? 0 : 10 * progress
       const point = {
         x: center.x + NODE_WIDTH / 2 - 14 - (index % 6) * 34,
-        y: center.y - NODE_HEIGHT / 2 - 6 - rise,
+        y: center.y - (this.sizes.get(flash.nodeId)?.height ?? NODE_HEIGHT) / 2 - 6 - rise,
       }
       this.drawGlyph(flash.glyph, point, 1 - progress * progress)
     }
@@ -300,37 +324,17 @@ export class MapRenderer {
 
   private drawNode(node: NodeView) {
     const center = this.positions.get(node.id)
-    if (!center) return
-    const { ctx } = this
-    const x = center.x - NODE_WIDTH / 2
-    const y = center.y - NODE_HEIGHT / 2
-    const selected = this.selection?.kind === 'node' && this.selection.id === node.id
-    ctx.fillStyle = COLORS.node
-    ctx.strokeStyle = selected ? COLORS.selected : COLORS.nodeBorder
-    ctx.lineWidth = selected ? 2 : 1
-    ctx.beginPath()
-    ctx.roundRect(x, y, NODE_WIDTH, NODE_HEIGHT, 8)
-    ctx.fill()
-    ctx.stroke()
-    ctx.fillStyle = COLORS.kind[node.kind]
-    ctx.beginPath()
-    ctx.roundRect(x, y, 4, NODE_HEIGHT, [8, 0, 0, 8])
-    ctx.fill()
-
-    ctx.textAlign = 'left'
-    ctx.fillStyle = COLORS.text
-    ctx.font = `600 13px ${FONT}`
-    ctx.fillText(fit(ctx, node.label, NODE_WIDTH - 28), x + 16, y + 24)
-    ctx.fillStyle = COLORS.muted
-    ctx.font = `11px ${FONT}`
-    ctx.fillText(fit(ctx, subtitle(node), NODE_WIDTH - 28), x + 16, y + 41)
+    const card = this.cards.get(node.id)
+    if (!center || !card) return
+    drawNodeCard(this.ctx, node, card, center, this.selection?.kind === 'node' && this.selection.id === node.id,
+      this.logos, this.camera.scale < 0.45)
   }
 
   private hitTest(screen: Point): Selection {
     const world = toWorld(this.camera, screen)
     for (const node of [...this.nodes].reverse()) {
       const center = this.positions.get(node.id)
-      if (center && insideNode(center, world)) return { kind: 'node', id: node.id }
+      if (center && insideNode(center, world, this.sizes.get(node.id))) return { kind: 'node', id: node.id }
     }
     for (const edge of this.edges) {
       const curve = this.curve(edge)
@@ -375,23 +379,4 @@ export class MapRenderer {
     this.userMoved = false
     this.invalidate(true)
   }
-}
-
-function subtitle(node: NodeView): string {
-  switch (node.kind) {
-    case 'database':
-      return [node.address, node.port].filter((part) => part !== null).join(':') || 'database'
-    case 'external':
-      return 'external'
-    default:
-      return node.kind
-  }
-}
-
-/** Cuts `text` with an ellipsis to fit `width` pixels in the current font. */
-function fit(ctx: CanvasRenderingContext2D, text: string, width: number): string {
-  if (ctx.measureText(text).width <= width) return text
-  let end = text.length
-  while (end > 0 && ctx.measureText(`${text.slice(0, end)}…`).width > width) end--
-  return `${text.slice(0, end)}…`
 }

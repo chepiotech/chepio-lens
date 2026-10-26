@@ -37,8 +37,28 @@ pub struct NodeView {
     pub address: Option<String>,
     pub port: Option<u16>,
     pub namespace: Option<String>,
+    // Optional declared SDK metadata; absent for older SDKs and infrastructure nodes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub metadata: Option<NodeMetadataView>,
     pub first_seen: String,
     pub last_seen: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct NodeMetadataView {
+    pub technologies: Vec<String>,
+    pub pages: Vec<String>,
+    pub microfrontends: Vec<MicrofrontendView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct MicrofrontendView {
+    pub name: String,
+    pub framework: String,
+    pub pages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -827,6 +847,19 @@ impl From<&Node> for NodeView {
                 .and_then(|db| db.port)
                 .or_else(|| external.and_then(|ext| ext.port)),
             namespace: db.and_then(|db| db.namespace.clone()),
+            metadata: node.metadata.as_ref().map(|metadata| NodeMetadataView {
+                technologies: metadata.technologies.clone(),
+                pages: metadata.pages.clone(),
+                microfrontends: metadata
+                    .microfrontends
+                    .iter()
+                    .map(|item| MicrofrontendView {
+                        name: item.name.clone(),
+                        framework: item.framework.clone(),
+                        pages: item.pages.clone(),
+                    })
+                    .collect(),
+            }),
             first_seen: node.first_seen_ns.to_string(),
             last_seen: node.last_seen_ns.to_string(),
         }

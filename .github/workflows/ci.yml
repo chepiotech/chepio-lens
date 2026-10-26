@@ -75,9 +75,11 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - run: pnpm install --frozen-lockfile --filter demo-e2e
+      - run: pnpm install --frozen-lockfile --filter demo-e2e --filter ui
       - name: Chromium for Playwright
         run: pnpm --filter demo-e2e exec playwright install --with-deps chromium
+      - name: Map cards under the collector CSP (desktop and mobile)
+        run: pnpm --filter ui build && pnpm --filter demo-e2e map-cards
       - name: Backend to database (demo app and collector in compose)
         run: demo/e2e/backend-db.sh
       - name: Browser to backend to database (Playwright)

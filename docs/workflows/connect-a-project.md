@@ -133,6 +133,13 @@ if (import.meta.env.DEV && import.meta.env.VITE_CHEPIO_LENS_ENDPOINT) {
 and add `VITE_CHEPIO_LENS_ENDPOINT=http://localhost:4318` to `.env.development.local`. Production builds leave the SDK
 out.
 
+To populate map cards, pass `node` to `initLens` with your frontend frameworks, page paths and optional
+microfrontends. For Rust, use `Config.node` with `init_with`, or `CHEPIO_LENS_NODE_METADATA` when keeping `init`.
+See the [SDK settings and examples](../architecture/interfaces.md#declared-node-metadata). Backend endpoints
+come from observed calls. Redis appears as a cache when Redis database client spans arrive; naming it in the
+technology list does not create a connection. **Settings → General → Example map** in the collector UI shows the richer layout with
+microfrontends and Redis using illustrative data.
+
 - If the browser calls your API on another origin (not through the Vite proxy), add
   `propagateTo: [/^http:\/\/localhost:8080\//]` to `initLens`, and let your API accept the `traceparent` header in its
   CORS policy. Without it the frontend and the API show up unconnected.
@@ -142,8 +149,9 @@ out.
 ## 4. Check it works
 
 Use your app. Within about two seconds the map shows `my-web → my-api → postgresql …`, each request travels along it,
-and **Logs** lists the requests, queries, your log lines and clicks. Click a line to inspect its headers, bodies and
-SQL. `curl -s http://localhost:4320/api/stats` counts what arrived.
+and the **Console** icon at the top left opens requests, queries, your log lines and clicks. Click a line to inspect
+its headers, bodies and SQL. The **Settings** icon at the top right opens connection status, session reset and map
+options. `curl -s http://localhost:4320/api/stats` counts what arrived.
 
 ## Local Kubernetes / kind
 
