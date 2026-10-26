@@ -40,6 +40,7 @@ Distribution: the collector as the image `ghcr.io/chepiotech/chepio-lens` (amd64
 run with `collector/compose.yaml`, or installed from a clone (ADR-0011); the Rust SDK as a git dependency pinned to a
 tag, the web SDK as a tarball attached to each GitHub release, or with pnpm from the git subdirectory before the first
 release (ADR-0014). How to connect an app: `docs/workflows/connect-a-project.md`.
+The image contains a static musl binary in scratch, its license and dependency evidence (ADR-0017).
 
 ## Allowed dependencies
 
