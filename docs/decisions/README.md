@@ -19,3 +19,4 @@ One decision per file. An accepted decision is never edited: a new ADR supersede
 | [ADR-0013](ADR-0013-packet-icons-from-lucide-path-data.md) | Packet icons are Lucide path data drawn on the canvas, not an icon package | Accepted |
 | [ADR-0014](ADR-0014-sdk-distribution.md) | The web SDK ships as a tarball on GitHub releases; the Rust SDK stays a git dependency | Accepted |
 | [ADR-0015](ADR-0015-outbound-http-and-grpc.md) | One Tower layer for outbound HTTP and gRPC; status through trailers | Accepted |
+| [ADR-0017](ADR-0017-static-collector-image.md) | Static musl collector in scratch with native dependency evidence | Accepted |

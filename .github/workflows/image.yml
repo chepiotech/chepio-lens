@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - collector/Dockerfile
+      - collector/image/**
       - collector/compose.yaml
       - collector/image-smoke.sh
       - .dockerignore
@@ -41,6 +42,8 @@ jobs:
       ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Image verifier regression tests
+        run: python3 -B -m unittest discover -s collector/image -p '*_test.py'
       - name: Build
         run: |
           version=dev
@@ -48,6 +51,8 @@ jobs:
           docker build -f collector/Dockerfile -t "chepio-lens:$ARCH" \
             --label "org.opencontainers.image.version=$version" \
             --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+      - name: Verify static runtime and dependency evidence
+        run: python3 collector/image/verify.py "chepio-lens:$ARCH"
       - name: Smoke test (health, loopback ports, OTLP ingest, embedded UI)
         run: collector/image-smoke.sh "chepio-lens:$ARCH"
       - name: Push the architecture tag

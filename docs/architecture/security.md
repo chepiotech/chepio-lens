@@ -84,6 +84,15 @@ text are still free text and should not contain secrets. The original browser co
 contain values the application chose to print; redaction applies to exported telemetry. Collector diagnostics never
 repeat accepted or rejected log payloads. Log details are React text, including strings that resemble HTML.
 
+## Container dependency evidence
+
+The runtime image contains only the static collector, musl's license and build evidence; it has no shell or package
+manager (ADR-0017). `collector/image/verify.py` checks the actual exported filesystem and binary. Vulnerability
+checks must cover `/usr/share/chepio-lens-build/native.cdx.json` and `Cargo.lock` in addition to the image itself:
+an empty package scan of scratch does not establish that statically linked dependencies are safe. The build binds
+this evidence to the binary hash and verifies the linked system libc. Exact Rust compiler metadata records the
+source of the standard library and libunwind.
+
 ## Known gaps (accepted for the MVP)
 
 - Secrets inside free text (e.g. a token inside a log message body or an `exception` event's message) are not
