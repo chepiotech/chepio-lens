@@ -52,3 +52,8 @@ pub const LENS_SDK_VERSION: &str = "lens.sdk.version";
 pub const LENS_LOG_KIND: &str = "lens.log.kind";
 /// Log body or attributes were shortened before export.
 pub const LENS_LOG_TRUNCATED: &str = "lens.log.truncated";
+/// Browser user action id, 16 hex characters, on the action record and on every fetch span its handler starts
+/// synchronously; groups them into one activity (ADR-0016).
+pub const LENS_ACTION_ID: &str = "lens.action.id";
+/// Rows a statement affected, as the database driver reports them (Postgres also counts the rows of a `SELECT`).
+pub const LENS_DB_AFFECTED_ROWS: &str = "lens.db.affected_rows";

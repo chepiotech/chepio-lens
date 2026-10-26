@@ -14,9 +14,9 @@ const LEVELS = { debug: 5, info: 9, log: 9, warn: 13, error: 17 } as const
 export function captureLogs(logger: Logger, redactor: Redactor) {
   let busy = false
   const safely = (work: () => void) => { try { work() } catch { /* Telemetry never breaks the app. */ } }
-  const actions = captureActions((body, attributes, scope) => safely(() => emit(body, attributes, scope)))
-  function emit(body: string, attributes: Record<string, string | number | boolean>, scope: Context, severity = 9, text = 'info') {
-    logger.emit({ body, attributes, context: scope, severityNumber: severity, severityText: text })
+  const actions = captureActions((body, attributes, scope, time) => safely(() => emit(body, attributes, scope, 9, 'info', time)))
+  function emit(body: string, attributes: Record<string, string | number | boolean>, scope: Context, severity = 9, text = 'info', timestamp?: number) {
+    logger.emit({ body, attributes, context: scope, severityNumber: severity, severityText: text, ...(timestamp === undefined ? {} : { timestamp }) })
   }
   const restore: (() => void)[] = []
   // Diagnostics may run later, outside the suppressed export context. Mark their synchronous console calls too.

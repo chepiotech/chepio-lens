@@ -79,8 +79,9 @@ text fields; browser console arguments use a bounded serializer that masks keys 
 `toJSON`. Already-formatted free text is not parsed as arbitrary object/debug syntax. Collector-side truncation
 marks the record; shortened data cannot undo masking.
 
-Browser action labels omit form values; navigation omits query strings and fragments. Accessible labels and button
-text are still free text and should not contain secrets. The original browser console output is unchanged and can
+Browser action labels omit form values; navigation omits query strings and fragments. Other elements are described
+by their attributes and position only, never by their text, because free text is not masked (ADR-0016). Accessible
+labels and button text are still free text and should not contain secrets. The original browser console output is unchanged and can
 contain values the application chose to print; redaction applies to exported telemetry. Collector diagnostics never
 repeat accepted or rejected log payloads. Log details are React text, including strings that resemble HTML.
 

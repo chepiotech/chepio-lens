@@ -31,9 +31,9 @@ restarts, production use, authentication.
 | Collector memory at default bounds | RSS ≤ 300 MiB | 60 MiB with the store full by count (10,000 requests of 4 spans, no bodies); 3.4 MiB idle (B). Full by bytes (with bodies) not measured yet |
 | Collector startup | ≤ 1 s | 0.56 s to `/healthz` answering (B) |
 | Added latency per request in the app (Rust SDK, 16 KiB body capture on) | p95 ≤ 1 ms | Bodies on: +0.13 ms at p95, +0.05 ms at p50 over the whole mix; requests without a database query +0.13–0.17 ms at p95, +0.03 ms at p50. Exporting without bodies +0.28 ms at p95; SDK without an endpoint +0.07 ms (E). With app log export: bodies on +0.24 ms at p95, +0.11 ms at p50; the most is a 100 KB JSON response, +0.47 ms at p50 and +0.98 ms at p95, spent masking the whole body (F) |
-| Added latency per fetch in the browser (web SDK, 16 KiB body capture on) | p95 ≤ 1 ms | At the budget: bodies on +0.82 ms at p95 and +0.32 ms at p50, +1.34 / +0.46 ms with the machine under heavy load. Exporting without bodies +0.34–0.78 ms at p95, +0.25 ms at p50. Main-thread time per request +0.52–0.61 ms with bodies, +0.33–0.43 ms without (0.62–0.67 ms without the SDK); the 100 KB JSON response costs the most, +0.58–0.84 ms at p50 (H) |
+| Added latency per fetch in the browser (web SDK, 16 KiB body capture on) | p95 ≤ 1 ms | Bodies on +0.61 ms at p95 and +0.36 ms at p50 with 64-span export batches (I); before, +0.82 / +0.32 ms and +1.34 / +0.46 ms with the machine under heavy load (H). Exporting without bodies +0.34–0.78 ms at p95, +0.25 ms at p50. Main-thread time per request +0.52–0.61 ms with bodies, +0.33–0.43 ms without (0.62–0.67 ms without the SDK); the 100 KB JSON response costs the most, +0.58–0.84 ms at p50 (H) |
 | Map rendering | 60 fps with 50 nodes, 100 edges, 200 animated requests | 60 fps: 600 frames in 10 s, none late; draw p50/p95/max 0.6 / 0.8 / 1.0 ms at device pixel ratio 1, 0.6 / 0.7 / 0.8 ms at 2 (JavaScript side; rasterization is not included) (D). With packet icons and node flashes: still 60 fps, none late; draw 1.6 / 1.9 / 2.7 ms at 1, 1.3 / 1.5 / 2.4 ms at 2 (G) |
-| Collector unavailable | Zero errors and no measurable latency change in the app | Rust SDK, nothing listening at the endpoint: 0 errors in 20,000 requests; p50 +0.06 ms, p95 −0.13 ms, within the noise (E); with app log export 0 errors in 10,000, p95 +0.15 ms (F). **Web SDK misses it**: endpoint on a closed port, 0 errors in 20,000 fetches, but p95 +1.91–2.18 ms, p99 +9.2–9.8 ms, p50 +0.34–0.48 ms (H) |
+| Collector unavailable | Zero errors and no measurable latency change in the app | Rust SDK, nothing listening at the endpoint: 0 errors in 20,000 requests; p50 +0.06 ms, p95 −0.13 ms, within the noise (E); with app log export 0 errors in 10,000, p95 +0.15 ms (F). Web SDK, endpoint on a closed port: 0 errors in 10,000 fetches, p95 +0.92 ms, p99 +1.53 ms, p50 +0.26 ms with 64-span export batches, under heavy load (I); with 512-span batches it missed the budget: p95 +1.91–2.18 ms, p99 +9.2–9.8 ms (H) |
 
 Measurement runs (2026-10-24, Apple M1 Pro, 10 cores, 16 GiB, macOS 26.6, release builds, everything on one
 machine over loopback):
@@ -107,9 +107,15 @@ busy with another session's work: load average 20 falling to 6.7 during H1, 5.7 
   own release collector received every span of the exporting slots and rejected, dropped or refused none; one long
   task (over 50 ms) in both runs together. Single slots stalled (p95 up to 34 ms), so only medians of per-round
   differences are used. With bodies on the OpenTelemetry fetch instrumentation and the SDK each read a clone of the
-  response, and the SDK masks the whole JSON body on the main thread. With the collector unreachable the export queue
-  stays full (2,048 spans), so every export attempt serializes a batch of 512 spans with their bodies and retries it
-  up to five times; this is the likely cause of the p99 cost, not yet verified by a profile.
+  response, and the SDK masks the whole JSON body on the main thread.
+- Profile (Chromium trace and CPU profile of 10 s slots, same load): with the collector unreachable, main-thread tasks
+  of 11–20 ms came in pairs about every 2 s (14 over 10 ms, against 3 without the SDK). A failed export holds the
+  batch processor for up to its 2 s timeout, so the next batch grows to about 200 spans with bodies (about 1 MB),
+  and every retry calls `fetch` again with that body: inside those tasks 29 ms were the exporter's native `fetch`
+  call, 33 ms native code and 18 ms serialization. With the collector up, the batch leaves every 500 ms, a quarter
+  the size and without retries (5–8 ms tasks).
+- (I) As (H), once, after the fix: web SDK export batches of 64 spans instead of 512 (and 33 concurrent exports, so
+  shutdown can still flush a full queue). Load average 18 falling to 12.6.
 
 ## Test strategy
 
