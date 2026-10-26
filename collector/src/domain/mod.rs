@@ -1,6 +1,7 @@
 //! Normalized spans, nodes, edges, graph derivation and linking. No I/O and no clock reads: callers pass the time in
 //! (`Now`), so linking and windows are deterministic in tests.
 
+pub mod activity;
 pub mod edge;
 pub mod event;
 pub mod graph;

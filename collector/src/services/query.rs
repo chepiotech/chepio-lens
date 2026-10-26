@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 // Domain
+use crate::domain::activity::{ActivityDetail, ActivityId, ActivityPage, ActivityQuery};
 use crate::domain::edge::EdgeSnapshot;
 use crate::domain::log::{LogPage, LogQuery};
 use crate::domain::node::Node;
@@ -45,6 +46,14 @@ impl Query {
         self.shared.lock().store.logs(query)
     }
 
+    pub fn activities(&self, query: &ActivityQuery) -> ActivityPage {
+        self.shared.lock().store.activities(query)
+    }
+
+    pub fn activity(&self, id: &ActivityId) -> Option<ActivityDetail> {
+        self.shared.lock().store.activity(id)
+    }
+
     pub fn request(&self, trace_id: &TraceId) -> Option<RequestDetail> {
         self.shared.lock().store.detail(trace_id)
     }
@@ -70,6 +79,8 @@ impl Query {
             log_entries: store.log_entries,
             log_bytes: store.log_bytes,
             logs_evicted: store.logs_evicted,
+            activities: store.activities,
+            activities_evicted: store.activities_evicted,
             logs_received: counters.logs_received.load(Ordering::Relaxed),
             logs_rejected: counters.logs_rejected.load(Ordering::Relaxed),
             pending_links: state.linker.pending_count(),

@@ -173,6 +173,8 @@ CORS. JSON only. Internal contract: the UI and the collector ship in one binary,
 |---|---|
 | `GET /api/graph` | `{ nodes, edges, generated_at }` |
 | `GET /api/logs?layer=&node=&edge=&status=&level=&kind=&q=&limit=&before=` | Log lines, newest first: `{ entries, next_before }`. `layer`: comma-separated `frontend`, `backend`, `database` (empty = all); `node`: a node id; `edge`: an edge id (lines of the client spans of its hops and of the server spans they called within the same trace, for requests still in memory); `status`: `ok` or `error` (error/fatal for log records); `level`: comma-separated trace/debug/info/warn/error/fatal (span lines have no level); `kind`: comma-separated log/action/request/query/call/span; `q`: case-insensitive substring of the line text, service or trace id; `limit`: default 100, at most 500; `before`: an entry `id` for the next, older page. Unknown values give `400` |
+| `GET /api/activities?layer=&node=&edge=&status=&origin=&q=&limit=&before=` | Activities, newest first: `{ activities, next_before }` (ADR-0016). Filters as for `/api/logs`; an activity matches when any of its lines does. `origin`: comma-separated `action`, `request`; `before`: an activity's `cursor`; `limit`: default 50, at most 200. Unknown values give `400` |
+| `GET /api/activities/{id}` | `{ activity, steps, truncated_steps }` for `action:<id>` or `trace:<trace id>`. `400` for a malformed id, `404` once dropped or reset |
 | `GET /api/requests/{trace_id}` | The request summary and every span: ids, parent, service, layer, kind, name, start offset from the request's earliest span as received (I12), duration, status and message, attributes (`{key, kind, values}`; arrays as one value per item), events (name, offset from the span's start, attributes, `truncated_attributes`), truncated span keys. `400` for a malformed id, `404` once evicted or reset |
 | `GET /api/events` | Server-Sent Events stream, see below |
 | `POST /api/reset` | Clears requests, logs and graph; `204` |
@@ -182,7 +184,8 @@ CORS. JSON only. Internal contract: the UI and the collector ship in one binary,
 SSE events: `node` (node created or changed), `edge` (edge stats changed, with `routes`: calls per route of the
 callee, most called first), `request` (new or updated request summary with `has_root` and `hops`: each edge it
 touched with its start offset and duration on the request's timeline, used for animation), `log` (a new log line,
-one per stored span or app/action record, the same shape as an entry of `GET /api/logs`), `resync` (the client fell behind and must fetch
+one per stored span or app/action record, the same shape as an entry of `GET /api/logs`), `activity` (a new or changed
+activity, `{ activity, replaces }`: drop the rows named in `replaces`, they were merged into this one), `resync` (the client fell behind and must fetch
 `/api/graph` again).
 
 Each hop has a `packet` for the map's packet icons, or `null` when its caller span is no longer stored:
@@ -196,6 +199,15 @@ from `url.scheme` or `url.full`; body kinds from the `content-type` header attri
 SQL operation from `db.operation.name`, else the first word of `db.query.text`. `error` follows the edge rule (caller
 or callee failed). SQL packets have no body kinds or status. The UI draws the request icon out, waits at the callee
 and draws the response icon back; log records and user actions from SSE `log` flash at their `nodes`.
+
+Activity steps (ADR-0016, I13) come in call-tree order: the action, then each fetch's tree depth first. A span gives a
+start and an end step: `send`/`response` for a client call, `receive`/`respond` for a server span, `query`/`result`
+for a database query, `span` for anything else; app log lines with a span's context sit inside it as `log` steps, and
+calls into another process come right after the caller's start. Each step has its service, node (the database's for
+`query` and `result`), trace and span ids, time and `offset_ms` from the activity's time as received (negative across
+skewed clocks, I12), the duration on end steps, a one-line `text`, status code, error flag, level and `details`:
+labelled values already redacted, rendered as text (I11): URL, request or response headers and body, SQL text, rows
+returned and affected, error message, record attributes. No row contents (ADR-0010).
 
 Log entries have nullable `trace_id`, `span_id`, `level`, `duration_ms` and `record`. For app/action logs, duration
 is absent and `record` contains `body` (redacted text), typed `attributes` and `truncated`; span lines have no record.

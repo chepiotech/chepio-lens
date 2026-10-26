@@ -2,6 +2,6 @@
 
 /**
  * SSE event names on `GET /api/events`: `node` → `NodeView`, `edge` → `EdgeView`, `request` → `RequestView`,
- * `resync` → `{}` (fetch `GET /api/graph` again).
+ * `log` → `LogEntryView`, `activity` → `ActivityEventView`, `resync` → `{}` (fetch `GET /api/graph` again).
  */
-export type LensEventName = "node" | "edge" | "request" | "log" | "resync";
+export type LensEventName = "node" | "edge" | "request" | "log" | "activity" | "resync";

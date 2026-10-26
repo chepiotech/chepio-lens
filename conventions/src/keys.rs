@@ -32,6 +32,7 @@ pub const RPC_RESPONSE_STATUS_CODE: &str = "rpc.response.status_code";
 pub const DB_SYSTEM_NAME: &str = "db.system.name";
 pub const DB_NAMESPACE: &str = "db.namespace";
 pub const DB_QUERY_TEXT: &str = "db.query.text";
+pub const DB_RESPONSE_RETURNED_ROWS: &str = "db.response.returned_rows";
 pub const DB_OPERATION_NAME: &str = "db.operation.name";
 pub const DB_COLLECTION_NAME: &str = "db.collection.name";
 

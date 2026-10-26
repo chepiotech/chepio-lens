@@ -6,6 +6,9 @@
 use serde::Serialize;
 use ts_rs::TS;
 // Domain
+use crate::domain::activity::{
+    ActivityDetail, ActivitySummary, ActivityUpdate, Detail, DetailKind, Origin, Step, StepKind,
+};
 use crate::domain::edge::{EdgeSnapshot, Protocol};
 use crate::domain::log::{Layer, LogCursor, LogEntry, LogKind};
 use crate::domain::log_record::LogLevel;
@@ -189,7 +192,7 @@ impl From<&Packet> for PacketView {
 }
 
 /// SSE event names on `GET /api/events`: `node` → `NodeView`, `edge` → `EdgeView`, `request` → `RequestView`,
-/// `resync` → `{}` (fetch `GET /api/graph` again).
+/// `log` → `LogEntryView`, `activity` → `ActivityEventView`, `resync` → `{}` (fetch `GET /api/graph` again).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
@@ -198,6 +201,7 @@ pub enum LensEventName {
     Edge,
     Request,
     Log,
+    Activity,
     Resync,
 }
 
@@ -208,6 +212,7 @@ impl LensEventName {
             Self::Edge => "edge",
             Self::Request => "request",
             Self::Log => "log",
+            Self::Activity => "activity",
             Self::Resync => "resync",
         }
     }
@@ -250,6 +255,9 @@ pub struct StatsView {
     #[ts(type = "number")]
     pub edges_dropped: u64,
     pub sse_clients: usize,
+    pub activities: usize,
+    #[ts(type = "number")]
+    pub activities_evicted: u64,
 }
 
 fn ms(ns: u64) -> f64 {
@@ -388,6 +396,227 @@ impl From<&LogEntry> for LogEntryView {
                 attributes: attribute_views(&record.attributes),
                 truncated: record.truncated,
             }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum ActivityOriginView {
+    Action,
+    Request,
+}
+
+/// One entry of the logs panel's activities (ADR-0016): a user action with the traces it started, or a trace without
+/// an action.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ActivityView {
+    /// `action:<lens.action.id>` or `trace:<trace id>`; `GET /api/activities/{id}` returns its steps.
+    pub id: String,
+    /// Position in the list; `GET /api/activities?before=<cursor>` continues with older activities.
+    pub cursor: String,
+    pub origin: ActivityOriginView,
+    pub title: String,
+    pub time: String,
+    /// Service whose clock `time` is in.
+    pub service: String,
+    /// From `time` to the last end in that service's clock; `null` for an action that started nothing.
+    pub duration_ms: Option<f64>,
+    pub layers: Vec<LayerView>,
+    pub services: Vec<String>,
+    pub nodes: Vec<String>,
+    pub traces: Vec<String>,
+    /// Traces of this action beyond the listed ones.
+    #[ts(type = "number")]
+    pub traces_unlisted: u64,
+    pub lines: usize,
+    pub error: bool,
+    pub status_code: Option<u16>,
+}
+
+impl From<&ActivitySummary> for ActivityView {
+    fn from(summary: &ActivitySummary) -> Self {
+        Self {
+            id: summary.id.to_string(),
+            cursor: cursor_text(LogCursor {
+                time_ns: summary.time_ns,
+                seq: summary.seq,
+            }),
+            origin: match summary.origin {
+                Origin::Action => ActivityOriginView::Action,
+                Origin::Request => ActivityOriginView::Request,
+            },
+            title: summary.title.clone(),
+            time: summary.time_ns.to_string(),
+            service: summary.service.clone(),
+            duration_ms: summary.duration_ns.map(ms),
+            layers: summary
+                .layers
+                .iter()
+                .copied()
+                .map(LayerView::from)
+                .collect(),
+            services: summary.services.clone(),
+            nodes: summary.nodes.iter().cloned().collect(),
+            traces: summary.traces.iter().map(ToString::to_string).collect(),
+            traces_unlisted: summary.traces_unlisted,
+            lines: summary.lines,
+            error: summary.error,
+            status_code: summary.status_code,
+        }
+    }
+}
+
+/// SSE `activity`: a new or changed activity; drop the rows named in `replaces`, they were merged into this one.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ActivityEventView {
+    pub activity: ActivityView,
+    pub replaces: Vec<String>,
+}
+
+impl From<&ActivityUpdate> for ActivityEventView {
+    fn from(update: &ActivityUpdate) -> Self {
+        Self {
+            activity: ActivityView::from(&update.summary),
+            replaces: update.replaces.iter().map(ToString::to_string).collect(),
+        }
+    }
+}
+
+/// `GET /api/activities`: newest first.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ActivityPageView {
+    pub activities: Vec<ActivityView>,
+    /// Pass as `before` for the next, older page; `null` at the end.
+    pub next_before: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum StepKindView {
+    Action,
+    Send,
+    Receive,
+    Query,
+    Result,
+    Respond,
+    Response,
+    Span,
+    Log,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum DetailKindView {
+    Text,
+    Json,
+    Sql,
+}
+
+/// A labelled value of a step, already redacted; render it as text (I11).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct DetailView {
+    pub label: String,
+    pub value: String,
+    pub kind: DetailKindView,
+    pub truncated: bool,
+}
+
+/// One step of an activity, in call-tree order (I13).
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct StepView {
+    pub kind: StepKindView,
+    pub layer: LayerView,
+    pub service: String,
+    pub node: String,
+    pub trace_id: Option<String>,
+    pub span_id: Option<String>,
+    pub time: String,
+    /// From the activity's `time`, as received: across processes it may be negative (I12).
+    pub offset_ms: f64,
+    pub duration_ms: Option<f64>,
+    pub text: String,
+    pub status_code: Option<u16>,
+    pub error: bool,
+    pub level: Option<LogLevelView>,
+    pub details: Vec<DetailView>,
+}
+
+impl StepView {
+    fn new(step: &Step, from_ns: u64) -> Self {
+        Self {
+            kind: match step.kind {
+                StepKind::Action => StepKindView::Action,
+                StepKind::Send => StepKindView::Send,
+                StepKind::Receive => StepKindView::Receive,
+                StepKind::Query => StepKindView::Query,
+                StepKind::Result => StepKindView::Result,
+                StepKind::Respond => StepKindView::Respond,
+                StepKind::Response => StepKindView::Response,
+                StepKind::Span => StepKindView::Span,
+                StepKind::Log => StepKindView::Log,
+            },
+            layer: step.layer.into(),
+            service: step.service.clone(),
+            node: step.node.clone(),
+            trace_id: step.trace_id.map(|id| id.to_string()),
+            span_id: step.span_id.map(|id| id.to_string()),
+            time: step.time_ns.to_string(),
+            offset_ms: offset_ms(step.time_ns, from_ns),
+            duration_ms: step.duration_ns.map(ms),
+            text: step.text.clone(),
+            status_code: step.status_code,
+            error: step.error,
+            level: step.level.map(LogLevelView::from),
+            details: step.details.iter().map(DetailView::from).collect(),
+        }
+    }
+}
+
+impl From<&Detail> for DetailView {
+    fn from(detail: &Detail) -> Self {
+        Self {
+            label: detail.label.clone(),
+            value: detail.value.clone(),
+            kind: match detail.kind {
+                DetailKind::Text => DetailKindView::Text,
+                DetailKind::Json => DetailKindView::Json,
+                DetailKind::Sql => DetailKindView::Sql,
+            },
+            truncated: detail.truncated,
+        }
+    }
+}
+
+/// `GET /api/activities/{id}`.
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export)]
+pub struct ActivityDetailView {
+    pub activity: ActivityView,
+    pub steps: Vec<StepView>,
+    /// Steps left out over the bound.
+    pub truncated_steps: usize,
+}
+
+impl From<&ActivityDetail> for ActivityDetailView {
+    fn from(detail: &ActivityDetail) -> Self {
+        Self {
+            activity: ActivityView::from(&detail.summary),
+            steps: detail
+                .steps
+                .steps
+                .iter()
+                .map(|step| StepView::new(step, detail.summary.time_ns))
+                .collect(),
+            truncated_steps: detail.steps.truncated,
         }
     }
 }
