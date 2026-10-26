@@ -137,3 +137,29 @@ busy with another session's work: load average 20 falling to 6.7 during H1, 5.7 
   modes (`pnpm --filter demo-e2e sdk-overhead`).
 - UI: browser performance profile with a synthetic event stream at the target graph size.
 - Each measurement is recorded in the table above with date, machine and command.
+
+## Outbound HTTP and gRPC validation
+
+This extends the existing local development workload to gateway-to-service calls, including streaming RPCs. No
+new SLO, pool or concurrency budget is introduced: app clients own their deadlines, TLS, readiness and limits.
+Per-call response capture uses the existing 256 KiB buffer ceiling and export queues; gRPC keeps no payload buffer.
+There is no additional global state or background task. Persistence, caches and new services are not needed.
+
+`sdk/rust/tests/outbound/` covers concurrent parent isolation, readiness, concrete request body preservation,
+no-endpoint behavior, body/call cancellation, error-to-success transitions, metadata privacy, and real loopback
+hyper HTTP/tonic unary and streaming transport. `collector/tests/fixtures/grpc_chain.json` exercises current and
+legacy conventions across browser → gateway → gRPC service → database, including reversed batch order. UI tests
+cover gRPC glyphs and response status; the frame-time harness includes long gRPC error labels.
+
+2026-10-26, same local machine/Chromium setup as run G, now including gRPC packets: 600 frames over 10 s at each
+DPR, draw p50/p95/max 1.40/1.60/2.60 ms (DPR 1), 1.40/1.60/2.30 ms (DPR 2); frame intervals
+16.70/16.70/16.80 ms in both, no slow frames. All 14 browser E2E scenarios passed, including RPC status and
+error-to-success recovery. Backend/database E2E: five calls, visible 0.47 s after the last request.
+
+SDK regression measurement (2026-10-26): `sdk_overhead --rounds 5 --seconds 5`, the same 100 requests/s and four
+connections as F, 2,500 requests per mode, no errors. Bodies on added median paired +0.10 ms p50 / +0.82 ms p95
+over the mix; no-endpoint mode +0.02 / −0.03 ms; unreachable collector +0.09 / +0.71 ms. Without database queries,
+bodies on added +0.03–0.04 ms p50 / +0.17–0.24 ms p95. Database-specific p95 differences ranged +0.18–1.87 ms;
+this short run does not resolve them reliably (one bare slot reached p95 56 ms, one unreachable slot 118 ms).
+It meets the mixed-workload 1 ms budget, but does not establish a per-database-route tail-latency guarantee.
+This measures the shared server body observer regression; it is not a client transport throughput benchmark.

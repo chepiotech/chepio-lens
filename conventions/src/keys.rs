@@ -1,4 +1,4 @@
-//! Attribute keys chepio-lens reads or writes. Stable OpenTelemetry semantic convention names, plus the `lens.*`
+//! Attribute keys chepio-lens reads or writes. OpenTelemetry semantic convention names, plus the `lens.*`
 //! extension (`docs/architecture/interfaces.md`).
 
 // Resource
@@ -21,6 +21,12 @@ pub const URL_QUERY: &str = "url.query";
 pub const URL_SCHEME: &str = "url.scheme";
 pub const SERVER_ADDRESS: &str = "server.address";
 pub const SERVER_PORT: &str = "server.port";
+
+// RPC (semconv 1.44.0 release candidate, ADR-0015)
+pub const RPC_SYSTEM_NAME: &str = "rpc.system.name";
+pub const RPC_METHOD: &str = "rpc.method";
+pub const RPC_METHOD_ORIGINAL: &str = "rpc.method_original";
+pub const RPC_RESPONSE_STATUS_CODE: &str = "rpc.response.status_code";
 
 // Database
 pub const DB_SYSTEM_NAME: &str = "db.system.name";

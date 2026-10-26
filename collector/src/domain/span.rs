@@ -2,7 +2,11 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
-use chepio_lens_conventions::keys::{HTTP_RESPONSE_STATUS_CODE, LANGUAGE_WEBJS};
+use chepio_lens_conventions::grpc;
+use chepio_lens_conventions::keys::{
+    HTTP_RESPONSE_STATUS_CODE, LANGUAGE_WEBJS, RPC_METHOD, RPC_METHOD_ORIGINAL,
+    RPC_RESPONSE_STATUS_CODE, RPC_SYSTEM_NAME,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TraceId(pub [u8; 16]);
@@ -213,12 +217,30 @@ impl Span {
         self.attributes.get(key).and_then(AttrValue::as_i64)
     }
 
-    /// Failed: error status, or an HTTP status code of 500 or more.
+    pub fn is_grpc(&self) -> bool {
+        self.attr_str(RPC_SYSTEM_NAME) == Some("grpc")
+    }
+
+    pub fn rpc_method(&self) -> Option<&str> {
+        if !self.is_grpc() {
+            return None;
+        }
+        self.attr_str(RPC_METHOD)
+            .filter(|method| *method != "_OTHER")
+            .or_else(|| self.attr_str(RPC_METHOD_ORIGINAL))
+            .and_then(grpc::method)
+    }
+
+    /// Failed: explicit error, server HTTP failure, or a gRPC failure for this span's role.
     pub fn is_error(&self) -> bool {
         matches!(self.status, Status::Error { .. })
             || self
                 .attr_i64(HTTP_RESPONSE_STATUS_CODE)
                 .is_some_and(|code| code >= 500)
+            || (self.is_grpc()
+                && self
+                    .attr_str(RPC_RESPONSE_STATUS_CODE)
+                    .is_some_and(|status| grpc::is_error(status, self.kind == SpanKind::Client)))
     }
 
     /// Rough number of bytes the span holds, for the store's byte bound.

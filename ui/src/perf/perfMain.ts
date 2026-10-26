@@ -20,12 +20,13 @@ const FLASHES_PER_TICK = 2
 
 /** Every packet kind the map draws, in turn: icons, badges and labels all cost drawing time. */
 const PACKETS: PacketView[] = [
-  { kind: 'http', operation: 'POST', request_body: 'json', response_body: 'json', status_code: 201, error: false },
-  { kind: 'https', operation: 'GET', request_body: 'none', response_body: 'json', status_code: 200, error: false },
-  { kind: 'http', operation: 'PUT', request_body: 'form', response_body: 'text', status_code: 200, error: false },
-  { kind: 'http', operation: 'GET', request_body: 'none', response_body: 'binary', status_code: 500, error: true },
-  { kind: 'sql', operation: 'SELECT', request_body: 'none', response_body: 'none', status_code: null, error: false },
-  { kind: 'sql', operation: 'INSERT', request_body: 'none', response_body: 'none', status_code: null, error: false },
+  { kind: 'grpc', operation: 'school.Identity/GetUser', request_body: 'binary', response_body: 'binary', status_code: null, rpc_status: 'DEADLINE_EXCEEDED', error: true },
+  { kind: 'http', operation: 'POST', request_body: 'json', response_body: 'json', rpc_status: null, status_code: 201, error: false },
+  { kind: 'https', operation: 'GET', request_body: 'none', response_body: 'json', rpc_status: null, status_code: 200, error: false },
+  { kind: 'http', operation: 'PUT', request_body: 'form', response_body: 'text', rpc_status: null, status_code: 200, error: false },
+  { kind: 'http', operation: 'GET', request_body: 'none', response_body: 'binary', rpc_status: null, status_code: 500, error: true },
+  { kind: 'sql', operation: 'SELECT', request_body: 'none', response_body: 'none', rpc_status: null, status_code: null, error: false },
+  { kind: 'sql', operation: 'INSERT', request_body: 'none', response_body: 'none', rpc_status: null, status_code: null, error: false },
 ]
 const FLASH_TEXTS: Pick<LogEntryView, 'kind' | 'text' | 'level'>[] = [
   { kind: 'log', text: 'note saved', level: 'info' },

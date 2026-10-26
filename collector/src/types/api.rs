@@ -129,11 +129,13 @@ pub struct HopView {
 #[ts(export)]
 pub struct PacketView {
     pub kind: PacketKindView,
-    /// HTTP method or SQL operation, upper case.
+    /// HTTP method or SQL operation (upper case), or qualified gRPC method.
     pub operation: Option<String>,
     pub request_body: BodyKindView,
     pub response_body: BodyKindView,
     pub status_code: Option<u16>,
+    /// gRPC status name; separate from the HTTP transport status.
+    pub rpc_status: Option<String>,
     /// The edge's rule: the caller or the callee failed.
     pub error: bool,
 }
@@ -145,6 +147,7 @@ pub enum PacketKindView {
     Http,
     Https,
     Sql,
+    Grpc,
 }
 
 /// What a body holds, from its content type and size.
@@ -173,11 +176,13 @@ impl From<&Packet> for PacketView {
                 PacketKind::Http => PacketKindView::Http,
                 PacketKind::Https => PacketKindView::Https,
                 PacketKind::Sql => PacketKindView::Sql,
+                PacketKind::Grpc => PacketKindView::Grpc,
             },
             operation: packet.operation.clone(),
             request_body: body(packet.request_body),
             response_body: body(packet.response_body),
             status_code: packet.status_code,
+            rpc_status: packet.rpc_status.clone(),
             error: packet.error,
         }
     }

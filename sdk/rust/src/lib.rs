@@ -15,11 +15,15 @@
 
 mod app_logs;
 mod capture;
+mod client;
 mod database;
 mod http;
 mod lens;
+mod rpc;
 mod sqlx_events;
 
+pub use capture::ObservedBody;
+pub use client::{ClientLayer, ClientService};
 pub use database::Database;
 pub use http::{HttpLayer, HttpService};
 pub use lens::{Config, InitError, Lens, database_events_enabled, init, init_with};

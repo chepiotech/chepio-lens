@@ -2,7 +2,7 @@
 
 A live map of a running full-stack app. chepio-lens shows the frontend, the backend and the database as nodes on a
 canvas and animates every request along the path it takes: an HTTP or HTTPS document with its body type on the way
-out, the SQL query by operation, the response or the failure on the way back, and log lines and user actions at
+out, gRPC calls with their RPC status, the SQL query by operation, the response or the failure on the way back, and log lines and user actions at
 their nodes. Open any request to see its timeline, headers, bodies and SQL.
 
 **Status:** early development with a working local demo: the browser → API → database map, live filtered logs with
@@ -25,6 +25,8 @@ Your app                                        chepio-lens
   queries, add request and response payloads, and redact sensitive headers and configured JSON/form fields before
   export (limits and known gaps are described in [security](docs/architecture/security.md)).
 - The collector receives the spans, works out which component talks to which, and serves the map.
+- The Rust SDK connects service-to-service calls through one Tower layer for hyper and tonic clients, including
+  streaming gRPC status. The [connection guide](docs/workflows/connect-a-project.md) also covers local kind clusters.
 - Any service that already exports OpenTelemetry traces over OTLP/HTTP appears on the map too, without payloads.
 
 The first version targets local development of React + Rust (axum, sqlx) + Postgres apps. Docker and Kubernetes

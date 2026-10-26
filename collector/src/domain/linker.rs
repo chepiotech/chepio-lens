@@ -320,6 +320,9 @@ fn port(span: &Span) -> Option<u16> {
 
 /// `<method> <route>` of a server span, else its name.
 fn server_route(span: &Span) -> String {
+    if let Some(method) = span.rpc_method() {
+        return method.to_owned();
+    }
     match (
         span.attr_str(HTTP_REQUEST_METHOD),
         span.attr_str(HTTP_ROUTE),
@@ -331,11 +334,18 @@ fn server_route(span: &Span) -> String {
 
 /// `<method> <path>` of a client call, else its name.
 fn client_route(span: &Span) -> String {
-    let path = span.attr_str(URL_FULL).and_then(|url| {
-        let (_, rest) = url.split_once("://")?;
-        let path = &rest[rest.find('/')?..];
-        Some(path.split(['?', '#']).next().unwrap_or(path))
-    });
+    if let Some(method) = span.rpc_method() {
+        return method.to_owned();
+    }
+    let path = span
+        .attr_str(chepio_lens_conventions::keys::URL_PATH)
+        .or_else(|| {
+            span.attr_str(URL_FULL).and_then(|url| {
+                let (_, rest) = url.split_once("://")?;
+                let path = &rest[rest.find('/')?..];
+                Some(path.split(['?', '#']).next().unwrap_or(path))
+            })
+        });
     match (span.attr_str(HTTP_REQUEST_METHOD), path) {
         (Some(method), Some(path)) => format!("{method} {path}"),
         _ => span.name.clone(),

@@ -1,0 +1,91 @@
+# Local development only. Apply in the app's namespace; see docs/workflows/connect-a-project.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chepio-lens
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chepio-lens
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chepio-lens
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: collector
+          image: ghcr.io/chepiotech/chepio-lens:v0.1.0
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CHEPIO_LENS_OTLP_ADDR
+              value: 0.0.0.0:4318
+            - name: CHEPIO_LENS_UI_ADDR
+              value: 0.0.0.0:4320
+            - name: CHEPIO_LENS_CORS_ORIGINS
+              value: http://localhost:3000
+          ports:
+            - name: otlp
+              containerPort: 4318
+            - name: ui
+              containerPort: 4320
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: ui
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chepio-lens
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: chepio-lens
+  ports:
+    - name: otlp
+      port: 4318
+      targetPort: otlp
+    - name: ui
+      port: 4320
+      targetPort: ui
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chepio-lens
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: chepio-lens
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              chepio-lens-client: "true"
+      ports:
+        - protocol: TCP
+          port: 4318
+  egress: []

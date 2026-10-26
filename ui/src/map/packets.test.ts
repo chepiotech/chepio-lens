@@ -8,7 +8,7 @@ import { lucideIcons } from './icons/lucideIcons'
 import { LEGEND, PACKET_COLORS, flashGlyph, packetName, packetPhase, requestGlyph, responseGlyph } from './packets'
 
 const http = (overrides: Partial<PacketView> = {}): PacketView => ({
-  kind: 'http', operation: 'POST', request_body: 'json', response_body: 'json', status_code: 201, error: false, ...overrides,
+  kind: 'http', operation: 'POST', request_body: 'json', response_body: 'json', status_code: 201, rpc_status: null, error: false, ...overrides,
 })
 const entry = (overrides: Partial<LogEntryView>): LogEntryView => ({
   id: '1', trace_id: null, span_id: null, time: '0', duration_ms: null, layer: 'frontend', kind: 'log', service: 'web',
@@ -16,6 +16,17 @@ const entry = (overrides: Partial<LogEntryView>): LogEntryView => ({
 })
 
 describe('packet glyphs', () => {
+  it('distinguishes gRPC from HTTP 200 and recovers on the next successful call', () => {
+    const rpc = http({ kind: 'grpc', operation: 'school.Identity/GetUser', status_code: 200, rpc_status: 'INTERNAL', error: true })
+    expect(requestGlyph(rpc)).toEqual({ icon: 'file-digit', color: PACKET_COLORS.grpc, badge: null, label: 'gRPC' })
+    expect(responseGlyph(rpc)).toEqual({ icon: 'file-x', color: PACKET_COLORS.error, badge: null, label: 'INTERNAL' })
+    expect(responseGlyph({ ...rpc, rpc_status: 'OK', error: false })).toEqual({
+      icon: 'file-digit', color: PACKET_COLORS.response, badge: null, label: 'OK',
+    })
+    expect(responseGlyph({ ...rpc, rpc_status: null }).label).toBe('error')
+    expect(responseGlyph({ ...rpc, rpc_status: null, error: false }).label).toBe('?')
+    expect(packetName(rpc)).toBe('grpc:school.Identity/GetUser')
+  })
   it('shows an HTTP document by body type with its method, and the response with its status', () => {
     expect(requestGlyph(http())).toEqual({ icon: 'file-braces', color: PACKET_COLORS.request, badge: null, label: 'POST' })
     expect(responseGlyph(http())).toEqual({ icon: 'file-braces', color: PACKET_COLORS.response, badge: null, label: '201' })

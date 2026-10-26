@@ -295,10 +295,10 @@ async fn events_stream_reports_new_nodes_edges_and_requests() {
         request.contains(concat!(
             r#""hops":[{"edge":"svc:demo-web->svc:demo-api","start_offset_ms":0.0,"duration_ms":30.0,"#,
             r#""packet":{"kind":"http","operation":"GET","request_body":"none","response_body":"none","#,
-            r#""status_code":200,"error":false}},"#,
+            r#""status_code":200,"rpc_status":null,"error":false}},"#,
             r#"{"edge":"svc:demo-api->db:postgresql:db:5432/demo","start_offset_ms":5.0,"duration_ms":4.0,"#,
             r#""packet":{"kind":"sql","operation":"SELECT","request_body":"none","response_body":"none","#,
-            r#""status_code":null,"error":false}}]"#
+            r#""status_code":null,"rpc_status":null,"error":false}}]"#
         )),
         "{request}"
     );
@@ -1032,5 +1032,81 @@ async fn latest_edge_call_recovers_after_error_without_erasing_session_stats() {
         }
         assert_eq!(latest_event["last_error"], false, "SSE and snapshots agree");
         assert_eq!(latest_event["last_duration_ms"], 0.06);
+    }
+}
+
+/// Mixed current/legacy RPC conventions; HTTP 200 does not hide a failed gRPC status.
+#[tokio::test]
+async fn grpc_chain_links_in_any_batch_order_and_recovers_from_an_older_error() {
+    const RPC_EDGE: &str = "svc:gateway->svc:identity";
+    for success_first in [false, true] {
+        let app = app(Limits::default());
+        for success in [success_first, !success_first] {
+            let mut batch: Value =
+                serde_json::from_str(include_str!("fixtures/grpc_chain.json")).unwrap();
+            let trace = if success {
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            } else {
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            };
+            for resource in batch["resourceSpans"].as_array_mut().unwrap() {
+                for span in resource["scopeSpans"][0]["spans"].as_array_mut().unwrap() {
+                    span["traceId"] = trace.into();
+                    if success {
+                        for time in ["startTimeUnixNano", "endTimeUnixNano"] {
+                            span[time] = (span[time].as_str().unwrap().parse::<u64>().unwrap()
+                                + 1_000_000_000)
+                                .to_string()
+                                .into();
+                        }
+                        for attr in span["attributes"].as_array_mut().unwrap() {
+                            if attr["key"] == "rpc.response.status_code" {
+                                attr["value"]["stringValue"] = "OK".into();
+                            }
+                            if attr["key"] == "rpc.grpc.status_code" {
+                                attr["value"]["intValue"] = "0".into();
+                            }
+                        }
+                    }
+                }
+            }
+            let mut resources = batch["resourceSpans"].as_array().unwrap().clone();
+            if success_first {
+                resources.reverse();
+            }
+            for resource in resources {
+                let body = serde_json::to_vec(&serde_json::json!({ "resourceSpans": [resource] }))
+                    .unwrap();
+                assert_eq!(
+                    post(&app.otlp, "/v1/traces", "application/json", body)
+                        .await
+                        .0,
+                    StatusCode::OK
+                );
+            }
+            let request = get_json(&app.ui, &format!("/api/requests/{trace}")).await;
+            let packet = &request["request"]["hops"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|hop| hop["edge"] == RPC_EDGE)
+                .unwrap()["packet"];
+            assert_eq!(packet["kind"], "grpc");
+            assert_eq!(packet["operation"], "school.Identity/GetUser");
+            assert_eq!(
+                packet["rpc_status"],
+                if success { "OK" } else { "INTERNAL" }
+            );
+            assert_eq!(packet["status_code"], Value::Null);
+            assert_eq!(packet["error"], !success);
+        }
+        let graph = get_json(&app.ui, "/api/graph").await;
+        let rpc = edge(&graph, RPC_EDGE);
+        assert_eq!(rpc["count"], 2);
+        assert_eq!(rpc["errors"], 1);
+        assert_eq!(rpc["last_error"], false);
+        assert_eq!(rpc["last_duration_ms"], 56.0);
+        assert_eq!(rpc["routes"][0]["route"], "school.Identity/GetUser");
+        assert_eq!(graph["edges"].as_array().unwrap().len(), 3);
     }
 }
