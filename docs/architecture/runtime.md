@@ -8,7 +8,9 @@ Status: implemented (2026-10-25). Numbers are starting defaults to be validated 
 1. The app handles a request. The SDK records spans in memory; nothing blocks the request path on export. The Rust
    SDK's server span ends when the response body has been sent (or dropped), with the captured bodies attached.
 2. The SDK batch processor exports every 500 ms (OpenTelemetry's default is 5 s, too slow for a live map) or when
-   512 spans are queued.
+   512 spans are queued, 64 in the web SDK: a failed export there retries its whole batch on the page's main thread
+   (`quality-attributes.md`, runs H and I). Shutdown flushes the whole queue at once, so the web exporters allow
+   33 concurrent exports (a full queue of 64-span batches), below the collector's 64.
 3. `POST /v1/traces` → body limit → decode (protobuf or JSON) → normalize names → redact → store (and add one log
    line per stored span) → link and update graph → publish SSE events (`node`, `edge`, `request`, `log`) → respond
    `200`. All in one handler; no internal queue.
@@ -32,8 +34,8 @@ needed for this instrumentation. See ADR-0015 for compatibility and capture limi
 
 ## App logs and actions
 
-Both SDKs batch logs separately from spans with the same 500 ms interval, 512-record batch, 2,048-record queue and
-2 s export timeout. Shutdown shares a 2 s budget across both pipelines. The Rust tracing bridge masks fields and
+Both SDKs batch logs separately from spans with the same 500 ms interval, batch size (512, web 64), 2,048-record queue
+and 2 s export timeout. Shutdown shares a 2 s budget across both pipelines. The Rust tracing bridge masks fields and
 JSON text before enqueueing; at most 64 fields and a 12 KiB content budget, with 2 KiB per text/debug field. An
 oversized field is replaced whole so a cut JSON prefix cannot leak a sensitive key's value.
 

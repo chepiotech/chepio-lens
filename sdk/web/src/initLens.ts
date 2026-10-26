@@ -25,9 +25,19 @@ import { LENS_REDACTION_COUNT, LENS_SDK_VERSION, SDK_VERSION } from './consts'
 
 /** Every 500 ms instead of OpenTelemetry's 5 s, so the map stays live (docs/architecture/runtime.md). */
 const EXPORT_INTERVAL_MS = 500
-const EXPORT_BATCH_SPANS = 512
+/**
+ * Small batches: a failed export holds the processor for up to the export timeout, and every retry calls `fetch` with
+ * the whole batch on the page's main thread. At 512, a page whose collector was down stalled 11–20 ms per attempt
+ * (docs/architecture/quality-attributes.md, run H).
+ */
+const EXPORT_BATCH_SPANS = 64
 /** On overflow new spans are dropped; the app is not affected (I1, I9). */
 const EXPORT_QUEUE_SPANS = 2_048
+/**
+ * Shutdown flushes the whole queue at once, one export per batch; the exporter's default of 30 would drop the rest.
+ * Stays below the collector's 64 concurrent ingest requests (docs/architecture/runtime.md).
+ */
+const EXPORT_CONCURRENCY = EXPORT_QUEUE_SPANS / EXPORT_BATCH_SPANS + 1
 /** Covers the exporter's own retries; a batch that does not make it in time is dropped. */
 const EXPORT_TIMEOUT_MS = 2_000
 
@@ -78,7 +88,11 @@ export function initLens(options: LensOptions): Lens {
     bodyLimit: options.bodyLimit ?? DEFAULT_BODY_LIMIT,
     redactor,
   }
-  const exporter = new OTLPTraceExporter({ url: tracesUrl, timeoutMillis: EXPORT_TIMEOUT_MS })
+  const exporter = new OTLPTraceExporter({
+    url: tracesUrl,
+    timeoutMillis: EXPORT_TIMEOUT_MS,
+    concurrencyLimit: EXPORT_CONCURRENCY,
+  })
   const provider = new TracerProvider({
     resource: defaultResource().merge(
       resourceFromAttributes({ [ATTR_SERVICE_NAME]: options.serviceName, [LENS_SDK_VERSION]: SDK_VERSION }),
@@ -103,7 +117,7 @@ export function initLens(options: LensOptions): Lens {
   const logProvider = new LoggerProvider({
     resource: defaultResource().merge(resourceFromAttributes({ [ATTR_SERVICE_NAME]: options.serviceName, [LENS_SDK_VERSION]: SDK_VERSION })),
     processors: [new BatchLogRecordProcessor({
-      exporter: new OTLPLogExporter({ url: logsUrl, timeoutMillis: EXPORT_TIMEOUT_MS }),
+      exporter: new OTLPLogExporter({ url: logsUrl, timeoutMillis: EXPORT_TIMEOUT_MS, concurrencyLimit: EXPORT_CONCURRENCY }),
       scheduledDelayMillis: EXPORT_INTERVAL_MS, maxExportBatchSize: EXPORT_BATCH_SPANS,
       maxQueueSize: EXPORT_QUEUE_SPANS, exportTimeoutMillis: EXPORT_TIMEOUT_MS,
     })],
