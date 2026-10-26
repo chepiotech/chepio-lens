@@ -47,7 +47,7 @@ export type LensOptions = {
 
 export type Lens = {
   readonly enabled: boolean
-  /** Stops capture, flushes pending spans and logs and waits at most the export timeout. */
+  /** Stops capture, flushes pending spans and logs and waits at most the export timeout. Never rejects. */
   shutdown(): Promise<void>
 }
 
@@ -150,13 +150,11 @@ export function initLens(options: LensOptions): Lens {
       if (globalThis.fetch === withBodies) globalThis.fetch = instrumented
       unregister()
       logs.stop()
-      try {
-        await Promise.all([provider.shutdown(), logProvider.shutdown()])
-      } finally {
-        trace.disable()
-        context.disable()
-        propagation.disable()
-      }
+      // A flush that fails, as with the collector down, drops what it held; the app's own shutdown goes on (I1).
+      await Promise.allSettled([provider.shutdown(), logProvider.shutdown()])
+      trace.disable()
+      context.disable()
+      propagation.disable()
     },
   }
   active = lens
