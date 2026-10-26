@@ -12,16 +12,20 @@ type Props = {
   onPreferences: (preferences: PanelPreferences) => void
   onClose: () => void
   children: ReactNode
+  title?: string
+  label?: string
+  closeLabel?: string
 }
 
-function InvestigationPanel({ preferences, onPreferences, onClose, children }: Props) {
+function InvestigationPanel({ preferences, onPreferences, onClose, children, title = 'Request activity',
+  label = 'Logs and request inspector', closeLabel = 'Close logs panel' }: Props) {
   const drag = useRef<{ x: number; y: number; size: number } | null>(null)
   const vertical = preferences.dock !== 'bottom'
   const left = preferences.dock === 'left'
   const size = vertical ? preferences.width : preferences.height
   const resize = (value: number) => onPreferences({ ...preferences, [vertical ? 'width' : 'height']: clampPanelSize(value, preferences.dock) })
   return (
-    <aside id="request-console" className={`investigation-panel investigation-panel--${preferences.dock}`} aria-label="Logs and request inspector"
+    <aside id="request-console" className={`investigation-panel investigation-panel--${preferences.dock}`} aria-label={label}
       style={{ '--panel-width': `${preferences.width}px`, '--panel-height': `${preferences.height}px` } as CSSProperties}>
       <div className="investigation-panel__resize" role="separator" tabIndex={0} aria-label="Resize logs panel"
         aria-orientation={vertical ? 'vertical' : 'horizontal'} aria-valuemin={vertical ? 340 : 220}
@@ -45,8 +49,8 @@ function InvestigationPanel({ preferences, onPreferences, onClose, children }: P
         }}
         onPointerUp={() => { drag.current = null }} onPointerCancel={() => { drag.current = null }} />
       <header className="investigation-panel__header">
-        <h2>Request activity</h2>
-        <button type="button" aria-label="Close logs panel" onClick={onClose}>×</button>
+        <h2>{title}</h2>
+        <button type="button" aria-label={closeLabel} onClick={onClose}>×</button>
       </header>
       {children}
     </aside>

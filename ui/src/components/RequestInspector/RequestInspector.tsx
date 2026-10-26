@@ -15,9 +15,9 @@ import { clockSkew, spanDepth, spanError } from './requestDetails'
 import { formatMs } from '../../map/formatMs'
 
 export type RequestSelection = { traceId: string | null; spanId: string | null; log?: LogEntryView }
-type Props = { selection: RequestSelection; revision: number; onBack: () => void }
+type Props = { selection: RequestSelection; revision: number; onBack: () => void; loadRequest?: typeof fetchRequest }
 
-function RequestInspector({ selection, revision, onBack }: Props) {
+function RequestInspector({ selection, revision, onBack, loadRequest = fetchRequest }: Props) {
   const [detail, setDetail] = useState<RequestDetailView | null>(null)
   const [selectedSpan, setSelectedSpan] = useState(selection.spanId)
   const [error, setError] = useState<string | null>(null)
@@ -31,7 +31,7 @@ function RequestInspector({ selection, revision, onBack }: Props) {
     setLoading(true)
     setError(null)
     const timer = setTimeout(() => {
-      void fetchRequest(traceId, controller.signal).then((value) => {
+      void loadRequest(traceId, controller.signal).then((value) => {
         if (!controller.signal.aborted) { setDetail(value); setLoading(false) }
       }, (reason: unknown) => {
         if (!controller.signal.aborted) {
@@ -41,7 +41,7 @@ function RequestInspector({ selection, revision, onBack }: Props) {
       })
     }, 100)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [selection.traceId, revision, attempt])
+  }, [selection.traceId, revision, attempt, loadRequest])
   const current = detail?.request.trace_id === selection.traceId ? detail : null
   const spansById = useMemo(() => new Map(current?.spans.map((item) => [item.span_id, item]) ?? []), [current])
   const span = current?.spans.find((item) => item.span_id === selectedSpan) ?? current?.spans[0]

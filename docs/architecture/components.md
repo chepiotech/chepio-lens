@@ -106,6 +106,21 @@ Layers follow the global import groups; arrows show allowed imports.
   left/right inspect nodes, +/- zoom, 0 fits, Escape clears selection.
   Local Devicon SVGs retain their MIT license and are emitted as files (no data URLs), honoring the collector CSP.
   Build the UI, then run `pnpm --filter demo-e2e map-cards` for isolated desktop/mobile browser checks.
+- `TaskHub demo` in settings opens `?example=taskhub`, a lazy-loaded, memory-only simulation. Its declared
+  topology contains 19 nodes, Kubernetes/namespace groups and HTTP, SQL, event, Pub/Sub, WebSocket, auth and
+  storage connections. It reuses the live canvas shell, detailed `drawNodeCard` presentation, `CanvasControls`,
+  `SettingsDialog` and dockable `InvestigationPanel`. Scenario/app/reset controls float at the top. The console is
+  the live map's `LogsPanel` and `RequestInspector`. Its `useLogs`/`useActivities` pages, activity steps and requests
+  come from `TaskHubConsoleSource` instead of `lensApi`. That source is a bounded, in-memory adapter that returns
+  the collector's view types; it never calls the collector. The canvas has no static simulation banner or introductory copy;
+  source information remains in settings. `mapScene` supplies optional coordinates, groups, declared card contents
+  and one-way packets to the shared renderer; it does not extend the collector API or infer Kubernetes from telemetry.
+  The pure state machine in `ui/src/taskhub/` drives the app, console, edge counters and boundary states.
+  External dependencies show only caller-visible requests, waiting and simulated responses. Internal DNS/CDN
+  and load-balancer hops remain declared connections and are never animated as observed operations.
+  Scenario behavior, bounds and usage are documented in `demo/README.md`.
+  Technology SVGs are bundled locally with provenance in `ui/src/map/nodeCards/logos/README.md`; the build
+  includes their licenses and the Lucide notice at `/third-party-icons.txt`, also embedded by release collectors.
 - Packet icons: `requestPulses` places each hop on screen and decides when its request arrives and its response
   leaves (before and after the calls nested in it); `packets` picks the icon, colour and label for a hop's request and
   response and for log and action flashes at nodes; `MapRenderer` draws them as `Path2D` strokes. The icon outlines
@@ -119,7 +134,10 @@ Layers follow the global import groups; arrows show allowed imports.
   resizing and closing it do not resize the canvas or change its camera. Placement changes only in Console
   settings; the panel itself has a close button and a resize edge. Its placement, dimensions and selected
   Actions/Lines view are stored in `localStorage`. Log and request contents stay in memory. Edge selection opens its filtered log; a line selects
-  its trace and span in the inspector. Per-route edge statistics remain available above the log.
+  its trace and span in the inspector. Each console opening returns to the selected Actions/Lines list with
+  additional filters, activity rows and edge statistics collapsed. Filter values are retained; viewport changes
+  never expand options automatically. Inspector headers, log attributes and event details also start collapsed.
+  Per-route edge statistics remain available above the log.
 - `useLogs` reads filtered pages from `GET /api/logs`; SSE log/request events coalesce refreshes so edge linking and
   filter semantics remain on the collector. Filters cancel previous loads. The list is bounded and pauses live
   updates while the reader visits earlier lines (`runtime.md`).

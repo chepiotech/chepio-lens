@@ -13,7 +13,7 @@ type LoadMode = 'latest' | 'refresh' | 'older'
 const EMPTY: View = { entries: [], before: null, loading: false, error: null }
 
 /** Server filtering remains authoritative, including edges linked after their first spans arrived. */
-export function useLogs(filters: LogFilters, enabled: boolean, session: number) {
+export function useLogs(filters: LogFilters, enabled: boolean, session: number, loadPage = fetchLogs) {
   const [view, setView] = useState<View>(EMPTY)
   const [following, setFollowing] = useState(true)
   const [hasNew, setHasNew] = useState(false)
@@ -42,13 +42,13 @@ export function useLogs(filters: LogFilters, enabled: boolean, session: number) 
       busy = true
       update({ ...previous, loading: mode !== 'refresh', error: null })
       try {
-        let page = await fetchLogs(query, mode === 'older' ? previous.before ?? undefined : undefined, controller.signal)
+        let page = await loadPage(query, mode === 'older' ? previous.before ?? undefined : undefined, controller.signal)
         let incoming = page.entries
         // Catch a burst larger than one page, up to the view bound, without skipping its middle.
         const known = new Set(previous.entries.map((entry) => entry.id))
         while (mode === 'refresh' && known.size > 0 && page.next_before && incoming.length < LOG_VIEW_LIMIT
           && !incoming.some((entry) => known.has(entry.id))) {
-          page = await fetchLogs(query, page.next_before, controller.signal)
+          page = await loadPage(query, page.next_before, controller.signal)
           incoming = [...incoming, ...page.entries]
         }
         if (!alive) return
@@ -84,7 +84,7 @@ export function useLogs(filters: LogFilters, enabled: boolean, session: number) 
       clearTimeout(timer)
       commands.current = null
     }
-  }, [query, enabled, session])
+  }, [query, enabled, session, loadPage])
 
   const pause = useCallback(() => { followingRef.current = false; setFollowing(false) }, [])
   const resume = useCallback(() => {

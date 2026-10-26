@@ -18,7 +18,7 @@ const EMPTY: View = { activities: [], before: null, loading: false, error: null 
  * in `replaces` were merged into another one and leave at once; `revisions` counts updates per activity, so an
  * expanded activity reloads its steps while its spans arrive.
  */
-export function useActivities(filters: LogFilters, enabled: boolean, session: number) {
+export function useActivities(filters: LogFilters, enabled: boolean, session: number, loadPage = fetchActivities) {
   const [view, setView] = useState<View>(EMPTY)
   const [following, setFollowing] = useState(true)
   const [hasNew, setHasNew] = useState(false)
@@ -50,7 +50,7 @@ export function useActivities(filters: LogFilters, enabled: boolean, session: nu
       busy = true
       update({ ...previous, loading: mode !== 'refresh', error: null })
       try {
-        const page = await fetchActivities(query, mode === 'older' ? previous.before ?? undefined : undefined, controller.signal)
+        const page = await loadPage(query, mode === 'older' ? previous.before ?? undefined : undefined, controller.signal)
         if (!alive) return
         if (mode === 'refresh' && !followingRef.current) { setHasNew(true); return }
         const activities = mergeActivities(mode === 'latest' ? [] : previous.activities, page.activities, removed.current,
@@ -83,7 +83,7 @@ export function useActivities(filters: LogFilters, enabled: boolean, session: nu
       clearTimeout(timer)
       commands.current = null
     }
-  }, [query, enabled, session])
+  }, [query, enabled, session, loadPage])
 
   const onEvent = useCallback((event: ActivityEventView) => {
     if (event.replaces.length > 0) {

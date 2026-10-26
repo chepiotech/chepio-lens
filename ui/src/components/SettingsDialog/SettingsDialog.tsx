@@ -93,6 +93,10 @@ function SettingsDialog({ open, onClose, graph, preferences, onPreferences, onFo
           <div className="settings-dialog__row"><span>On the canvas</span>
             <span className="settings-dialog__value">{Object.keys(graph.nodes).length} nodes · {Object.keys(graph.edges).length} connections</span>
           </div>
+          <div className="settings-dialog__row">
+            <div><span>TaskHub demo</span><p>Explore a microservice architecture with local simulated requests.</p></div>
+            <a className="settings-dialog__action" href="?example=taskhub">Open demo</a>
+          </div>
           {onReset && <div className="settings-dialog__row">
             <div><span>Clear session</span><p>Remove captured requests, logs and the live map.</p></div>
             <button type="button" className="settings-dialog__action settings-dialog__action--danger"

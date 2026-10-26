@@ -29,7 +29,7 @@ function SpanContent({ span }: { span: SpanView }) {
       if (headers.length === 0 && body.text === null && !body.truncated) return null
       return <section key={direction} aria-label={`${direction} payload`}>
         <h4>{direction === 'request' ? 'Request' : 'Response'}</h4>
-        {headers.length > 0 && <details open><summary>Headers</summary><AttributeList attributes={headers} /></details>}
+        {headers.length > 0 && <details><summary>Headers</summary><AttributeList attributes={headers} /></details>}
         <h5>Body</h5>
         {body.truncated && <p className="request-inspector__notice">Body truncated — only the captured portion is available.</p>}
         {body.invalidJson && <p className="request-inspector__notice">Not valid JSON — keys could not be masked.</p>}
@@ -37,7 +37,7 @@ function SpanContent({ span }: { span: SpanView }) {
       </section>
     })}
     {sql !== undefined && <section aria-label="SQL query"><h4>SQL</h4><pre>{sql}</pre></section>}
-    {span.events.length > 0 && <section aria-label="Span events"><h4>Events</h4>{span.events.map((event, index) => <details key={`${event.name}-${index}`} open={event.name === 'exception'}>
+    {span.events.length > 0 && <section aria-label="Span events"><h4>Events</h4>{span.events.map((event, index) => <details key={`${event.name}-${index}`}>
       <summary>{event.name} · {formatMs(event.offset_ms)} from span start</summary>
       {event.offset_ms < 0 && <p className="request-inspector__notice">Event timestamp precedes the span. Clocks may differ.</p>}
       {event.truncated_attributes.length > 0 && <p className="request-inspector__notice">Truncated: {event.truncated_attributes.join(', ')}</p>}

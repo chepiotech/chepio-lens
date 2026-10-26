@@ -1,0 +1,101 @@
+.taskhub__controls {
+  position: absolute;
+  top: 1rem;
+  left: 4.75rem;
+  right: 4.75rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+.taskhub__controls > * { pointer-events: auto; }
+.taskhub__controls .canvas-controls__button { position: static; flex: 0 0 2.75rem; box-sizing: border-box; }
+.taskhub__controls button:disabled { opacity: 0.5; cursor: default; }
+.taskhub__scenario-picker select {
+  height: 2.75rem;
+  max-width: 11rem;
+  padding: 0 0.625rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: #c6ceda;
+  background: #171b23;
+  border: 1px solid #343c49;
+  border-radius: 0.75rem;
+}
+.taskhub__scenario-picker select:focus-visible { outline: 2px solid #8bb9ff; outline-offset: 3px; }
+.taskhub__status {
+  position: absolute;
+  left: 1rem;
+  bottom: 1.25rem;
+  max-width: min(34rem, calc(100% - 12rem));
+  color: #aeb6c3;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  pointer-events: none;
+}
+.taskhub__status [role='status']:not(:empty) { margin-top: 0.375rem; color: #dbe3ef; }
+.taskhub__status progress { display: block; width: 100%; height: 3px; margin-top: 0.5rem; accent-color: #8bb9ff; }
+.taskhub__panel-content { padding: 1rem; overflow: auto; min-height: 0; scrollbar-color: #52627a #15181e; }
+:where(.taskhub__panel-content, .taskhub-details) { font-size: 0.8rem; }
+:where(.taskhub__panel-content, .taskhub-details) :is(h2, h3, h4, p) { margin-top: 0; }
+:where(.taskhub__panel-content, .taskhub-details) h2 { font-size: 0.95rem; margin-bottom: 0; }
+:where(.taskhub__panel-content, .taskhub-details) h3 { font-size: 0.875rem; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+:where(.taskhub__panel-content, .taskhub-details) h4 { font-size: 0.8rem; margin-bottom: 0.625rem; }
+:where(.taskhub__panel-content, .taskhub-details) p { line-height: 1.55; }
+:where(.taskhub__panel-content, .taskhub-details) :is(button, input, textarea) {
+  font: inherit; color: inherit; background: #1a1d24; border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0.3rem; padding: 0.5rem; box-sizing: border-box; min-height: 2.5rem;
+}
+:where(.taskhub__panel-content, .taskhub-details) button { cursor: pointer; }
+:where(.taskhub__panel-content, .taskhub-details) button:hover { background: #262b35; }
+:where(.taskhub__panel-content, .taskhub-details) button:disabled { opacity: 0.5; cursor: default; }
+:where(.taskhub__panel-content, .taskhub-details) :is(input, textarea) { width: 100%; caret-color: #8bb9ff; }
+:where(.taskhub__panel-content, .taskhub-details) input::placeholder { color: #aeb6c3; }
+:where(.taskhub__panel-content, .taskhub-details) :focus-visible { outline: 2px solid #8bb9ff; outline-offset: 2px; }
+:where(.taskhub__panel-content, .taskhub-details) ::selection { background: #394e69; color: #fff; }
+.taskhub__close { display: grid; place-items: center; }
+.taskhub__muted { color: #adb9cb; font-size: 0.75rem; line-height: 1.55; }
+.taskhub-app__identity { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #b6c4d8; font-size: 0.75rem; }
+.taskhub-app__identity button { padding: 4px 8px; }
+.taskhub-app__sections { display: flex; margin: 20px 0; border-bottom: 1px solid #384251; }
+.taskhub-app__sections button { flex: 1; border: 0; border-radius: 0; background: transparent; color: #adb9cb; }
+.taskhub-app__sections button[aria-pressed='true'] { color: #d0dfc9; border-bottom: 2px solid #bdd1b4; }
+.taskhub__panel-content form { display: flex; flex-direction: column; gap: 9px; }
+.taskhub__panel-content form label { color: #c3cddd; font-size: 0.75rem; }
+.taskhub__panel-content textarea { resize: vertical; min-height: 70px; max-height: 180px; }
+.taskhub-app__list-heading { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; }
+.taskhub-app__list-heading h4 { margin: 0; }
+.taskhub-app__list-heading span { color: #a5b3c8; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.taskhub-app__tasks { list-style: none; padding: 0; margin: 10px 0 22px; max-height: 235px; overflow: auto; scrollbar-color: #52627a #161c25; }
+.taskhub-app__tasks button { width: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left; border: 0; border-bottom: 1px solid #303a49; border-radius: 0; padding: 12px 8px; background: transparent; }
+.taskhub-app__tasks button[aria-pressed='true'] { background: #242f3d; }
+.taskhub-app__tasks span, .taskhub-app__selected { overflow-wrap: anywhere; line-height: 1.5; }
+.taskhub-app__tasks small, .taskhub-app__entries small { color: #adb9cb; font-size: 0.7rem; }
+.taskhub-app__attach { margin-top: 20px; margin-bottom: 8px; }
+.taskhub-app__entries { list-style: none; padding: 0; margin: 16px 0; }
+.taskhub-app__entries li { display: flex; flex-direction: column; gap: 6px; line-height: 1.5; padding: 12px 0; border-bottom: 1px solid #303a49; overflow-wrap: anywhere; }
+.taskhub-app__empty { color: #afbed2; padding: 20px 0; line-height: 1.6; }
+.taskhub-details { z-index: 2; scrollbar-color: #52627a #1a1d24; }
+.taskhub-details > .taskhub__close { float: right; margin: -8px -8px 6px 8px; }
+.taskhub-details h2 { margin: 5px 0 12px; line-height: 1.4; }
+.taskhub-details ul { padding-left: 18px; color: #bdc8d9; font-size: 0.8rem; line-height: 1.7; }
+.taskhub-details > button:not(.taskhub__close) { margin: 4px 4px 0 0; }
+.taskhub-details__connections { display: flex; flex-direction: column; }
+.taskhub-details__connections button { display: flex; flex-direction: column; gap: 6px; text-align: left; background: transparent; border: 0; border-bottom: 1px solid #303a49; border-radius: 0; font-size: 0.75rem; line-height: 1.5; }
+.taskhub-details__connections small { color: #adb9cb; }
+.taskhub__external-key { color: #c9b5dd; }
+.taskhub-details__logo { float: left; margin: 0 10px 10px 0; object-fit: contain; }
+.taskhub-details__exchange { clear: both; margin: 18px 0; padding: 12px 0; border-top: 1px dashed #716283; border-bottom: 1px dashed #716283; font-size: 0.75rem; }
+.taskhub-details__exchange pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 18px; font-size: 0.72rem; color: #cdd7e6; line-height: 1.55; }
+.taskhub-details__waiting { display: flex; align-items: center; gap: 8px; color: #d6bded; }
+.taskhub-details__waiting::before { content: ''; width: 12px; height: 12px; border: 2px solid #665676; border-top-color: #d6bded; border-radius: 50%; animation: taskhub-wait 0.85s linear infinite; }
+@keyframes taskhub-wait { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .taskhub-details__waiting::before { animation: none; } }
+@media (max-width: 600px) {
+  .taskhub__controls { gap: 0.375rem; flex-wrap: wrap; }
+  .taskhub__scenario-picker { order: 1; flex-basis: 100%; text-align: center; }
+  .taskhub__scenario-picker select { width: 100%; max-width: 12.125rem; }
+  .taskhub-details { top: 7.5rem; max-height: calc(100% - 8.5rem); }
+  .taskhub__status { font-size: 0.65rem; }
+}

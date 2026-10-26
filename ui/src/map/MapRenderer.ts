@@ -2,6 +2,7 @@
 import type { EdgeView } from '../api/generated/EdgeView'
 import type { LogEntryView } from '../api/generated/LogEntryView'
 import type { NodeView } from '../api/generated/NodeView'
+import type { BoundaryState, MapScene, ScenePacket } from './mapScene/mapScene'
 // Utils
 import { formatMs } from './formatMs'
 import { type Camera, distanceToCurve, edgeCurve, fitCamera, insideNode, pointOnCurve, toWorld, zoomAt } from './geometry'
@@ -11,6 +12,8 @@ import { FLASH_MS, type Glyph, PACKET_COLORS, flashGlyph, packetName, packetPhas
 import type { Pulse } from './requestPulses'
 import { nodeCard, nodeKind, type NodeCard, type NodeCatalog } from './nodeCards/nodeCards'
 import { drawNodeCard, loadTechnologyLogos } from './nodeCards/drawNodeCard'
+import { CONNECTION_COLORS, distanceToRoute, pointOnRoute } from './mapScene/mapScene'
+import { drawSceneGroup, drawSceneNode } from './mapScene/drawScene'
 
 export type Selection = { kind: 'node'; id: string } | { kind: 'edge'; id: string } | null
 
@@ -50,6 +53,10 @@ export class MapRenderer {
   private sizes = new Map<string, NodeSize>()
   private readonly logos = loadTechnologyLogos(() => { this.dirty = true })
   private pulses: ActivePulse[] = []
+  private scene?: MapScene
+  private scenePackets: (ScenePacket & { start: number })[] = []
+  private boundaryStates: Record<string, BoundaryState> = {}
+  private readonly sceneLogos = new Map<string, HTMLImageElement>()
   private flashes: ActiveFlash[] = []
   private readonly iconPaths = new Map<LucideIcon, Path2D[]>()
   private readonly reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null
@@ -80,12 +87,24 @@ export class MapRenderer {
     this.frame = requestAnimationFrame(this.loop)
   }
 
-  setGraph(nodes: NodeView[], edges: EdgeView[], catalog: NodeCatalog = {}) {
+  setGraph(nodes: NodeView[], edges: EdgeView[], catalog: NodeCatalog = {}, scene?: MapScene) {
     this.nodes = nodes
     this.edges = edges
+    this.scene = scene
     this.cards = new Map(nodes.map((node) => [node.id, nodeCard(node, edges, catalog[node.id])]))
     this.sizes = new Map([...this.cards].map(([id, card]) => [id, { width: NODE_WIDTH, height: card.height }]))
     this.positions = layoutGraph(nodes, edges, this.sizes)
+    if (scene) {
+      this.sizes = new Map(Object.entries(scene.nodes).map(([id, node]) => [id, { width: node.width, height: node.height }]))
+      this.positions = new Map(Object.entries(scene.nodes).map(([id, node]) => [id, node.position]))
+      for (const item of [...Object.values(scene.nodes), ...scene.groups]) {
+        if (!item.logo || this.sceneLogos.has(item.logo)) continue
+        const image = new Image()
+        image.onload = () => { this.dirty = true }
+        image.src = item.logo
+        this.sceneLogos.set(item.logo, image)
+      }
+    }
     this.invalidate(!this.userMoved)
   }
 
@@ -106,7 +125,7 @@ export class MapRenderer {
     const point = this.positions.get(id)
     if (!point) return
     const height = this.sizes.get(id)?.height ?? NODE_HEIGHT
-    const scale = Math.min(1, (this.canvas.clientWidth - 32) / NODE_WIDTH, (this.canvas.clientHeight - 144) / height)
+    const scale = Math.min(1, (this.canvas.clientWidth - 32) / (this.sizes.get(id)?.width ?? NODE_WIDTH), (this.canvas.clientHeight - 144) / height)
     this.camera = { scale: Math.max(0.25, scale), x: this.canvas.clientWidth / 2 - point.x * Math.max(0.25, scale), y: this.canvas.clientHeight / 2 - point.y * Math.max(0.25, scale) }
     this.userMoved = true
     this.dirty = true
@@ -130,6 +149,19 @@ export class MapRenderer {
     if (this.pulses.length > MAX_PULSES) this.pulses.splice(0, this.pulses.length - MAX_PULSES)
   }
 
+  /** One-way illustrative messages, independent of the live request/response packet contract. */
+  playScenePacket(packet: ScenePacket) {
+    if (!this.scene?.edges[packet.edgeId]) return
+    this.scenePackets.push({ ...packet, start: performance.now() })
+    if (this.scenePackets.length > MAX_PULSES) this.scenePackets.splice(0, this.scenePackets.length - MAX_PULSES)
+    this.canvas.dataset.simulatedPackets = String(Number(this.canvas.dataset.simulatedPackets ?? 0) + 1)
+    this.canvas.dataset.lastSimulatedPacket = packet.label
+  }
+
+  clearScenePackets() { this.scenePackets = []; this.dirty = true }
+
+  setBoundaryStates(states: Record<string, BoundaryState>) { this.boundaryStates = states; this.dirty = true }
+
   /** Shows a log record or user action at its nodes for `FLASH_MS`; spans flash nothing (they travel as packets). */
   flash(entry: LogEntryView) {
     const glyph = flashGlyph(entry)
@@ -150,13 +182,24 @@ export class MapRenderer {
   }
 
   private invalidate(refit: boolean) {
-    if (refit) this.camera = fitCamera([...this.positions].map(([id, position]) => ({ ...position, ...this.sizes.get(id) })), this.canvas.clientWidth, this.canvas.clientHeight)
+    if (refit) {
+      const bounds = [...this.positions].map(([id, position]) => ({ ...position, ...this.sizes.get(id) }))
+      if (this.scene) {
+        for (const group of this.scene.groups) bounds.push({ x: group.x + group.width / 2, y: group.y + group.height / 2, width: group.width, height: group.height })
+        for (const edge of Object.values(this.scene.edges)) for (const point of edge.points) bounds.push({ ...point, width: 1, height: 1 })
+      }
+      const topInset = this.scene ? this.canvas.clientWidth <= 600 ? 120 : 76 : 0
+      this.camera = fitCamera(bounds, this.canvas.clientWidth, this.canvas.clientHeight - topInset, this.scene ? 24 : 48)
+      this.camera.y += topInset
+    }
     this.dirty = true
   }
 
   private readonly loop = (now: number) => {
-    const hadAnimations = this.pulses.length > 0 || this.flashes.length > 0
+    const hadAnimations = this.pulses.length > 0 || this.flashes.length > 0 || this.scenePackets.length > 0
+      || (!this.reducedMotion?.matches && Object.values(this.boundaryStates).some((state) => state.status === 'waiting'))
     this.pulses = this.pulses.filter((pulse) => now - pulse.start < pulse.durationMs)
+    this.scenePackets = this.scenePackets.filter((packet) => now - packet.start < packet.durationMs)
     this.flashes = this.flashes.filter((flash) => now - flash.start < FLASH_MS)
     // One more frame after the last animation ends, so its final position does not stay on the canvas.
     if (this.dirty || hadAnimations) {
@@ -188,9 +231,11 @@ export class MapRenderer {
     }
 
     ctx.setTransform(ratio * camera.scale, 0, 0, ratio * camera.scale, ratio * camera.x, ratio * camera.y)
+    if (this.scene) for (const group of this.scene.groups) drawSceneGroup(ctx, group, group.logo ? this.sceneLogos.get(group.logo) : undefined)
     for (const edge of this.edges) this.drawEdge(edge)
     for (const pulse of this.pulses) this.drawPulse(pulse, now)
-    for (const node of this.nodes) this.drawNode(node)
+    for (const node of this.nodes) this.drawNode(node, now)
+    for (const packet of this.scenePackets) this.drawScenePacket(packet, now)
     this.drawFlashes(now)
   }
 
@@ -201,6 +246,44 @@ export class MapRenderer {
   }
 
   private drawEdge(edge: EdgeView) {
+    const sceneEdge = this.scene?.edges[edge.id]
+    if (sceneEdge) {
+      const { ctx } = this
+      const selected = this.selection?.kind === 'edge' && this.selection.id === edge.id
+      const related = this.selection?.kind === 'node' && (this.selection.id === edge.from || this.selection.id === edge.to)
+      const active = this.scenePackets.some((packet) => packet.edgeId === edge.id)
+      ctx.save()
+      ctx.globalAlpha = selected || related || active ? 1 : this.selection ? 0.16 : 0.5
+      ctx.strokeStyle = CONNECTION_COLORS[sceneEdge.kind]
+      ctx.lineWidth = selected || related || active ? 2.5 : 1.4
+      ctx.lineJoin = 'round'
+      ctx.setLineDash(['event', 'pubsub', 'websocket'].includes(sceneEdge.kind) ? [6, 5] : [])
+      ctx.beginPath()
+      sceneEdge.points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y))
+      ctx.stroke()
+      ctx.setLineDash([])
+      const end = sceneEdge.points.at(-1)!
+      const before = pointOnRoute(sceneEdge.points, 0.99)
+      const angle = Math.atan2(end.y - before.y, end.x - before.x)
+      ctx.fillStyle = ctx.strokeStyle
+      ctx.beginPath()
+      ctx.moveTo(end.x, end.y)
+      ctx.lineTo(end.x - 8 * Math.cos(angle - 0.45), end.y - 8 * Math.sin(angle - 0.45))
+      ctx.lineTo(end.x - 8 * Math.cos(angle + 0.45), end.y - 8 * Math.sin(angle + 0.45))
+      ctx.fill()
+      if (selected) {
+        const center = pointOnRoute(sceneEdge.points, 0.5)
+        ctx.font = `12px ${FONT}`
+        ctx.textAlign = 'center'
+        const width = ctx.measureText(sceneEdge.label).width + 16
+        ctx.fillStyle = COLORS.background
+        ctx.fillRect(center.x - width / 2, center.y - 24, width, 20)
+        ctx.fillStyle = '#e6e8eb'
+        ctx.fillText(sceneEdge.label, center.x, center.y - 10)
+      }
+      ctx.restore()
+      return
+    }
     const curve = this.curve(edge)
     if (!curve) return
     const { ctx } = this
@@ -232,6 +315,16 @@ export class MapRenderer {
     // High enough that a packet icon passing the middle does not cover it.
     ctx.fillText(`${cache ? 'CACHE' : edge.protocol.toUpperCase()} · Last ${formatMs(edge.last_duration_ms)}${edge.last_error ? ' · error' : ''}`, middle.x, middle.y - 19)
     ctx.fillText(calls, middle.x, middle.y + 24)
+  }
+
+  private drawScenePacket(packet: ScenePacket & { start: number }, now: number) {
+    const edge = this.scene?.edges[packet.edgeId]
+    if (!edge) return
+    const progress = Math.min(1, Math.max(0, (now - packet.start) / packet.durationMs))
+    const t = this.reducedMotion?.matches ? 0.5 : packet.reverse ? 1 - progress : progress
+    const center = pointOnRoute(edge.points, t)
+    const icon = edge.kind === 'sql' ? 'database' : edge.kind === 'event' || edge.kind === 'pubsub' || edge.kind === 'websocket' ? 'send' : edge.kind === 'auth' ? 'lock' : 'file-braces'
+    this.drawGlyph({ icon, color: CONNECTION_COLORS[edge.kind], badge: null, label: packet.label }, center, 1)
   }
 
   private drawPulse(pulse: ActivePulse, now: number) {
@@ -322,7 +415,14 @@ export class MapRenderer {
     ctx.restore()
   }
 
-  private drawNode(node: NodeView) {
+  private drawNode(node: NodeView, now: number) {
+    const sceneNode = this.scene?.nodes[node.id]
+    if (sceneNode) {
+      drawSceneNode(this.ctx, node, sceneNode, this.selection?.kind === 'node' && this.selection.id === node.id,
+        sceneNode.logo ? this.sceneLogos.get(sceneNode.logo) : undefined,
+        this.boundaryStates[node.id], now, this.reducedMotion?.matches ?? false)
+      return
+    }
     const center = this.positions.get(node.id)
     const card = this.cards.get(node.id)
     if (!center || !card) return
@@ -337,6 +437,9 @@ export class MapRenderer {
       if (center && insideNode(center, world, this.sizes.get(node.id))) return { kind: 'node', id: node.id }
     }
     for (const edge of this.edges) {
+      const route = this.scene?.edges[edge.id]
+      if (route && distanceToRoute(route.points, world) <= EDGE_HIT_PX / this.camera.scale) return { kind: 'edge', id: edge.id }
+      if (route) continue
       const curve = this.curve(edge)
       if (curve && distanceToCurve(curve, world) <= EDGE_HIT_PX / this.camera.scale) return { kind: 'edge', id: edge.id }
     }

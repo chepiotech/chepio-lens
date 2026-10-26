@@ -98,7 +98,10 @@ function App() {
         <div className="app__map">
           <MapView ref={mapRef} graph={graph} catalog={catalog} selection={selection} onSelect={select} />
           <MapSummary graph={graph} catalog={catalog} />
-          <CanvasControls graph={graph} status={status} consoleOpen={panelOpen} onToggleConsole={() => setPanelOpen((value) => !value)}
+          <CanvasControls graph={graph} status={status} consoleOpen={panelOpen} onToggleConsole={() => {
+            if (!panelOpen) setRequestSelection(null)
+            setPanelOpen((value) => !value)
+          }}
             preferences={preferences} onPreferences={setPreferences} resetting={resetting} resetError={resetError}
             onReset={() => { void resetAll() }} onFocusNode={(id) => { setSelection(null); mapRef.current?.focusNode(id) }} />
           {selection?.kind === 'node' && <DetailsPanel graph={graph} catalog={catalog} selection={selection} onClose={() => setSelection(null)} />}

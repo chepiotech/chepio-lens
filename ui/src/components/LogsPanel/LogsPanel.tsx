@@ -1,11 +1,12 @@
 // Core
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 // Components
 import ActivityList from '../ActivityList/ActivityList'
 // Hooks
 import type { useActivities } from '../../hooks/useActivities'
 import type { useLogs } from '../../hooks/useLogs'
 // Types
+import type { fetchActivity } from '../../api/lensApi'
 import type { LogEntryView } from '../../api/generated/LogEntryView'
 import type { StepView } from '../../api/generated/StepView'
 import type { LogsView } from '../../activities/activityState'
@@ -18,6 +19,7 @@ import { DEFAULT_FILTERS, LAYERS, LOG_VIEW_LIMIT, logTime } from '../../logs/log
 import { formatMs } from '../../map/formatMs'
 
 type Props = {
+  loadActivity?: typeof fetchActivity
   graph: GraphState
   filters: LogFilters
   onFilters: (filters: LogFilters) => void
@@ -31,10 +33,9 @@ type Props = {
 }
 
 /** Actions (ADR-0016): one row per user action or request, expanding into its chain. Lines: one row per span or log. */
-function LogsPanel({ graph, filters, onFilters, logs, activities, view, onView, onInspect, onInspectStep, visible }: Props) {
+function LogsPanel({ graph, filters, onFilters, logs, activities, view, onView, onInspect, onInspectStep, visible, loadActivity }: Props) {
   const list = useRef<HTMLDivElement>(null)
   const anchor = useRef<{ id: string; offset: number } | null>(null)
-  const [showFilters, setShowFilters] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
   const actions = view === 'actions'
   const live = actions ? activities : logs
@@ -50,13 +51,6 @@ function LogsPanel({ graph, filters, onFilters, logs, activities, view, onView, 
     })
     activities.pause()
   }
-  useEffect(() => {
-    const media = window.matchMedia('(min-width: 761px)')
-    const update = () => setShowFilters(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
   const patch = (value: Partial<LogFilters>) => onFilters({ ...filters, ...value })
   const loadOlder = () => {
     if (list.current) {
@@ -92,7 +86,7 @@ function LogsPanel({ graph, filters, onFilters, logs, activities, view, onView, 
         <label className="logs-panel__search">Search logs
           <input type="search" value={filters.text} placeholder="Message, request, SQL or trace ID" onChange={(event) => patch({ text: event.target.value })} />
         </label>
-        <details className="logs-panel__advanced" open={showFilters} onToggle={(event) => setShowFilters(event.currentTarget.open)}>
+        <details className="logs-panel__advanced">
           <summary>More filters{[filters.node, filters.edge, filters.status, ...(actions ? [filters.origin] : [filters.level, filters.kind])].filter(Boolean).length > 0 ? ' · active' : ''}</summary>
           <div className="logs-panel__filter-grid">
           <label>Node<select value={filters.node} onChange={(event) => patch({ node: event.target.value })}>
@@ -144,7 +138,7 @@ function LogsPanel({ graph, filters, onFilters, logs, activities, view, onView, 
         {!rows.length && <p className="logs-panel__empty">{live.loading ? (actions ? 'Loading actions…' : 'Loading logs…')
           : filters.text || filters.node || filters.edge || filters.status || (actions ? filters.origin : filters.level || filters.kind) || filters.layers.length < 3
             ? (actions ? 'No actions match these filters.' : 'No lines match these filters.') : 'No activity yet. Send a request from your app.'}</p>}
-        {actions && <ActivityList activities={activities.activities} revisions={activities.revisions} expanded={expanded}
+        {actions && <ActivityList loadActivity={loadActivity} activities={activities.activities} revisions={activities.revisions} expanded={expanded}
           onToggle={toggle} onInspect={onInspectStep} />}
         {!actions && <ol className="logs-panel__entries" aria-label="Log entries">
           {logs.entries.map((entry) => <li key={entry.id} data-log-id={entry.id}>

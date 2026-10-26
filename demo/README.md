@@ -5,6 +5,52 @@ sqlx) and Postgres. In compose both report to the collector: the API is built wi
 web page loads the web SDK in development when `VITE_CHEPIO_LENS_ENDPOINT` is set. Without them there is no
 telemetry, and production builds of the web page never contain the SDK.
 
+## TaskHub architecture simulation
+
+Open **Settings → General → TaskHub demo** in the collector UI, or append `?example=taskhub` to its URL.
+For a standalone preview, run `pnpm --filter ui dev` with Node 24 and open
+http://localhost:5174/?example=taskhub. This route does not need a collector, database or containers.
+
+The map models 19 components of a TaskHub architecture: browser and external ingress, Envoy, nine application
+components and six platform dependencies. Local technology logos identify the declared stack; namespaces group
+the diagram. It uses the same full-canvas UI, detailed node cards, settings and dockable console as the live map.
+The upper controls open the demo app, select/run a scenario, reset the simulation and return to the live map.
+**Console** opens the same console as the live map: Actions and Lines, layer, node, edge, status and text
+filters, and the request inspector. The simulation feeds it locally. Each scenario is one user action. Each of its
+messages is one line, logged by the component that sends it: browser, Envoy, web, BFF, services, worker and
+realtime gateway. A message from an opaque dependency is logged by the component it reaches. Every line names
+both ends, so the node filter finds all 19 components. Exchanges with PostgreSQL, Redis and OpenSearch are in the
+database layer. A scenario that cannot start is logged as a failed action. **Settings → Console** chooses the
+console's left, right or bottom position. Both the app and the console overlay the canvas without resizing or
+refitting it. Select a node or connection for details, use **Settings → Map → Focus a node**, and pan/zoom to
+inspect. The scenarios are:
+
+- **Create task:** project access check, task/outbox commit and HTTP 201, then independent search indexing and
+  notification delivery. Only indexed tasks appear in search.
+- **Add comment:** save comment/outbox, respond, then notify through RabbitMQ, worker, Redis and WebSocket.
+- **Attach sample file:** upload authorization, direct browser-to-storage sample upload and ready confirmation.
+- **Search tasks:** query the modeled OpenSearch projection and show matching local tasks.
+- **Sign in:** synthetic Keycloak identity and Redis session; no password or token is created.
+- **Open application:** web rendering, initial project data and a WebSocket connection.
+
+DNS/CDN/WAF, cloud load balancing and all platform dependencies are opaque external services. Their cards show a
+waiting indicator; details show the caller's request and returned response. Internal processing is unknown.
+Every response and packet is simulated, not measured telemetry. The app performs no network or collector API
+operations. Sample attachments are synthetic; it never reads or uploads a local file.
+
+State lasts only in the current tab: at most 50 tasks, eight comments and eight files per task, 50 notifications,
+160 journal entries, 400 concurrent visual packets, and in the console 50 actions, 2,000 lines and 160 steps and
+spans per action (oldest dropped first). One scenario runs at a time. **Reset demo** or reload returns to the
+initial task, cancels timers and clears counters, packets, pending exchanges and the console.
+Task titles, comments and search queries are limited to 120, 280 and 80 characters and rendered as text.
+Keyboard map controls are Left/Right (inspect), +/− (zoom), 0 (fit) and Escape (clear selection/close panel).
+
+Verify with `pnpm --filter ui test`, `pnpm --filter ui typecheck`, `pnpm --filter ui build` and
+`pnpm --filter demo-e2e map-cards`. Browser tests cover all nodes, local assets under CSP, external waiting and
+responses, all scenarios, the console's actions, steps, inspector and lines from every application component,
+reset/reload, keyboard controls, upper-button access, all three console docks and isolation from collector APIs
+on desktop and mobile.
+
 ## Run
 
 ```sh

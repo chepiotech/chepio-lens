@@ -42,6 +42,7 @@ describe('request detail presentation', () => {
     expect(html).not.toContain('<img')
     expect(html).toContain('&lt;img')
     expect(html).toContain('Truncated: exception.message')
+    expect(html).not.toMatch(/<details[^>]*\sopen[\s=>]/)
   })
 
   it('flags clock skew without moving spans and handles missing or cyclic parents', () => {

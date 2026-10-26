@@ -7,12 +7,14 @@ import type { LogEntryView } from '../../api/generated/LogEntryView'
 import type { GraphState } from '../../map/graphState'
 import type { NodeCatalog } from '../../map/nodeCards/nodeCards'
 import type { Pulse } from '../../map/requestPulses'
+import type { BoundaryState, MapScene, ScenePacket } from '../../map/mapScene/mapScene'
 // Styles
 import './MapView.css'
 // Utils
 import { MapRenderer, type Selection } from '../../map/MapRenderer'
 
-export type MapHandle = { pulse: (pulses: Pulse[]) => void; flash: (entry: LogEntryView) => void; focusNode: (id: string) => void }
+export type MapHandle = { pulse: (pulses: Pulse[]) => void; flash: (entry: LogEntryView) => void; focusNode: (id: string) => void
+  playScenePacket: (packet: ScenePacket) => void; clearScenePackets: () => void }
 
 type Props = {
   ref?: Ref<MapHandle>
@@ -20,9 +22,11 @@ type Props = {
   selection: Selection
   onSelect: (selection: Selection) => void
   catalog?: NodeCatalog
+  scene?: MapScene
+  boundaryStates?: Record<string, BoundaryState>
 }
 
-function MapView({ ref, graph, selection, onSelect, catalog }: Props) {
+function MapView({ ref, graph, selection, onSelect, catalog, scene, boundaryStates }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rendererRef = useRef<MapRenderer | null>(null)
   const onSelectRef = useRef(onSelect)
@@ -39,17 +43,21 @@ function MapView({ ref, graph, selection, onSelect, catalog }: Props) {
   }, [])
 
   useEffect(() => {
-    rendererRef.current?.setGraph(Object.values(graph.nodes), Object.values(graph.edges), catalog)
-  }, [graph, catalog])
+    rendererRef.current?.setGraph(Object.values(graph.nodes), Object.values(graph.edges), catalog, scene)
+  }, [graph, catalog, scene])
 
   useEffect(() => {
     rendererRef.current?.setSelection(selection)
   }, [selection])
 
+  useEffect(() => { rendererRef.current?.setBoundaryStates(boundaryStates ?? {}) }, [boundaryStates])
+
   useImperativeHandle(ref, () => ({
     pulse: (pulses) => rendererRef.current?.pulse(pulses),
     flash: (entry) => rendererRef.current?.flash(entry),
     focusNode: (id) => id ? rendererRef.current?.focusNode(id) : rendererRef.current?.fit(),
+    playScenePacket: (packet) => rendererRef.current?.playScenePacket(packet),
+    clearScenePackets: () => rendererRef.current?.clearScenePackets(),
   }), [])
 
   return (
@@ -72,7 +80,7 @@ function MapView({ ref, graph, selection, onSelect, catalog }: Props) {
         } else return
         event.preventDefault()
       }}
-      aria-label="Map of frontends, services, databases, caches and their calls. Drag to pan, scroll to zoom, double-click to fit. Use left and right arrows to inspect nodes, plus and minus to zoom, 0 to fit."
+      aria-label={`${scene ? 'TaskHub simulated architecture map.' : 'Map of frontends, services, databases, caches and their calls.'} Drag to pan, scroll to zoom, double-click to fit. Use left and right arrows to inspect nodes, plus and minus to zoom, 0 to fit.`}
     />
     <div className="map-view__controls" aria-label="Map controls">
       <button type="button" aria-label="Zoom out" title="Zoom out" onClick={() => rendererRef.current?.zoom(0.8)}><CanvasIcon name="minus" /></button>

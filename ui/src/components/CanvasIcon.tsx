@@ -1,4 +1,4 @@
-type IconName = 'console' | 'settings' | 'close' | 'map' | 'plus' | 'minus' | 'fit'
+type IconName = 'console' | 'settings' | 'close' | 'map' | 'plus' | 'minus' | 'fit' | 'play' | 'reset' | 'app'
 
 const paths: Record<IconName, string[]> = {
   console: ['M4 5h16v14H4z', 'm8 9 3 3-3 3', 'M13 15h3'],
@@ -8,6 +8,9 @@ const paths: Record<IconName, string[]> = {
   plus: ['M12 5v14', 'M5 12h14'],
   minus: ['M5 12h14'],
   fit: ['M9 4H4v5', 'M15 4h5v5', 'M20 15v5h-5', 'M9 20H4v-5'],
+  play: ['m8 4 12 8-12 8z'],
+  reset: ['M3 4v6h6', 'M3 10a9 9 0 1 1 2 8'],
+  app: ['M3 4h18v16H3z', 'M3 9h18', 'M8 9v11'],
 }
 
 function CanvasIcon({ name }: { name: IconName }) {

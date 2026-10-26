@@ -47,6 +47,7 @@ test('logs filter by layer, node, edge, status and text; edge selection opens it
   const canvas = await page.locator('canvas').boundingBox()
   if (!canvas) throw new Error('Map canvas is missing')
   await page.mouse.click(canvas.x + canvas.width / 2 - 168, canvas.y + canvas.height / 2)
+  await page.getByText(/^More filters/).click()
   await expect(page.getByRole('combobox', { name: 'Edge', exact: true })).toHaveValue('svc:inspector-web->svc:inspector-api')
   await showLogLines(page)
   const entries = page.getByRole('list', { name: 'Log entries' }).getByRole('button')

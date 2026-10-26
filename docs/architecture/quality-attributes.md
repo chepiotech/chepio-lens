@@ -126,6 +126,11 @@ Measurement run (2026-10-26, same machine, release builds, load average 16–20 
 
 ## Test strategy
 
+TaskHub shared-renderer regression check (2026-10-26, same machine, Chromium, 1440 × 900):
+`pnpm --filter demo-e2e perf` passes at device pixel ratios 1 and 2 after adding optional declared scenes.
+The existing 50-node/100-edge/200-request fixture remains below its 16.67 ms p95 JavaScript draw budget in
+both runs. This verifies the live renderer's regression threshold; it does not measure TaskHub service latency.
+
 | Level | What | Where |
 |---|---|---|
 | Unit | Graph derivation, linking in any arrival order, legacy-name mapping, redaction, bounds and eviction | `conventions/`, `collector/src/domain/` |
@@ -133,7 +138,7 @@ Measurement run (2026-10-26, same machine, release builds, load average 16–20 
 | Integration | Recorded OTLP fixtures (protobuf and JSON) posted to the ingest handler → expected graph and requests from the UI API; SSE resync | `collector/tests/` |
 | SDK | Spans and payload attributes produced for a test axum app and a mocked `fetch`; app unaffected when the endpoint is unreachable | `sdk/rust/tests/`, `sdk/web` |
 | UI | Layout, event application, selection; renderer logic separated from canvas calls so it is testable | `ui/` (Vitest) |
-| Map cards | Built UI under the collector CSP at desktop/mobile widths; technology assets, microfrontends, Redis, controls, legacy snapshots and metadata events | `demo/e2e/map-cards/`; `pnpm --filter ui build && pnpm --filter demo-e2e map-cards` |
+| Map cards | Built UI under the collector CSP at desktop/mobile widths; technology assets, microfrontends, Redis, controls, legacy snapshots, metadata events and isolated TaskHub scenarios/boundaries | `demo/e2e/map-cards/`; `pnpm --filter ui build && pnpm --filter demo-e2e map-cards` |
 | End-to-end | Demo app + collector in compose: a script drives the API and checks `/api/graph`; Playwright clicks in the demo and checks the map's text summary and that the request is animated once | `demo/e2e/` |
 | Security | Demo login secrets never reach the collector unmasked; an HTML/JS payload in a body renders as text | `demo/e2e/tests/payload-security.spec.ts` (real demo login and note), SDK payload tests, collector redaction tests |
 

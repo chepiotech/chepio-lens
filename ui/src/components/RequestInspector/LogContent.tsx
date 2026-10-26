@@ -16,7 +16,7 @@ function LogContent({ entry }: { entry: LogEntryView }) {
     {record.truncated && <p className="request-inspector__notice">Log truncated — only the captured portion is available.</p>}
     {redactions && redactions !== '0' && <p>{redactions} values redacted</p>}
     <pre>{record.body}</pre>
-    {record.attributes.length > 0 && <details open><summary>Log attributes</summary><AttributeList attributes={record.attributes} /></details>}
+    {record.attributes.length > 0 && <details><summary>Log attributes</summary><AttributeList attributes={record.attributes} /></details>}
   </section>
 }
 

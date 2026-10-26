@@ -1,6 +1,7 @@
 // Components
 import ActivitySteps from './ActivitySteps'
 // Types
+import type { fetchActivity } from '../../api/lensApi'
 import type { ActivityView } from '../../api/generated/ActivityView'
 import type { StepView } from '../../api/generated/StepView'
 // Styles
@@ -14,11 +15,12 @@ type Props = {
   revisions: Record<string, number>
   expanded: ReadonlySet<string>
   onToggle: (id: string) => void
+  loadActivity?: typeof fetchActivity
   onInspect: (step: StepView) => void
 }
 
 /** One row per activity (ADR-0016); an expanded row shows its chain of steps. */
-function ActivityList({ activities, revisions, expanded, onToggle, onInspect }: Props) {
+function ActivityList({ activities, revisions, expanded, onToggle, onInspect, loadActivity }: Props) {
   return (
     <ol className="activity-list" aria-label="Actions">
       {activities.map((activity) => {
@@ -37,7 +39,7 @@ function ActivityList({ activities, revisions, expanded, onToggle, onInspect }: 
               </span>
               <span className="activity-list__title">{activity.title}</span>
             </button>
-            {open && <ActivitySteps id={activity.id} revision={revisions[activity.id] ?? 0} onInspect={onInspect} />}
+            {open && <ActivitySteps loadActivity={loadActivity} id={activity.id} revision={revisions[activity.id] ?? 0} onInspect={onInspect} />}
           </li>
         )
       })}
