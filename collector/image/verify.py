@@ -77,6 +77,24 @@ def check_files(files, architecture, expected_lock):
         raise ValueError('Musl license differs from source')
 
 
+def read_files(rootfs):
+    files = {}
+    seen = set()
+    for member in rootfs:
+        if member.name in seen:
+            raise ValueError('Duplicate runtime filesystem entry')
+        seen.add(member.name)
+        if member.isdir():
+            continue
+        # Docker creates this exact symlink even for a stopped scratch container.
+        if member.name == 'etc/mtab' and member.issym() and member.linkname == '/proc/mounts':
+            continue
+        if not member.isfile():
+            raise ValueError('Unexpected runtime filesystem entry: ' + member.name)
+        files[member.name] = rootfs.extractfile(member).read()
+    return files
+
+
 def verify(image):
     config = json.loads(subprocess.check_output(['docker', 'image', 'inspect', image]))[0]
     if config['Config']['User'] != '65534:65534':
@@ -86,14 +104,8 @@ def verify(image):
         with tempfile.TemporaryDirectory(prefix='lens-image-check-') as directory:
             archive = Path(directory) / 'rootfs.tar'
             subprocess.run(['docker', 'export', '-o', str(archive), container], check=True)
-            files = {}
             with tarfile.open(archive) as rootfs:
-                for member in rootfs:
-                    if member.isdir():
-                        continue
-                    if not member.isfile() or member.name in files:
-                        raise ValueError('Unexpected runtime filesystem entry')
-                    files[member.name] = rootfs.extractfile(member).read()
+                files = read_files(rootfs)
             check_files(files, config['Architecture'], (ROOT / 'Cargo.lock').read_bytes())
     finally:
         subprocess.run(['docker', 'rm', container], check=True, stdout=subprocess.DEVNULL)

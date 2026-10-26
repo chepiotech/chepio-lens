@@ -1,10 +1,12 @@
 # Core
 import hashlib
+import io
 import json
 import struct
+import tarfile
 import unittest
 # Utils
-from verify import BINARY, EVIDENCE, LICENSE, ROOT, check_elf, check_files
+from verify import BINARY, EVIDENCE, LICENSE, ROOT, check_elf, check_files, read_files
 
 
 def binary(kind=1, architecture=183):
@@ -34,6 +36,26 @@ def fixture():
 
 
 class ImageVerificationTests(unittest.TestCase):
+    def test_docker_mount_table_link_is_the_only_permitted_symlink(self):
+        for name, target, allowed in [
+            ('etc/mtab', '/proc/mounts', True),
+            ('etc/mtab', '/bin/sh', False),
+            ('bin/sh', '/proc/mounts', False),
+        ]:
+            buffer = io.BytesIO()
+            with tarfile.open(fileobj=buffer, mode='w') as archive:
+                entry = tarfile.TarInfo(name)
+                entry.type = tarfile.SYMTYPE
+                entry.linkname = target
+                archive.addfile(entry)
+            buffer.seek(0)
+            with self.subTest(name=name, target=target), tarfile.open(fileobj=buffer) as archive:
+                if allowed:
+                    self.assertEqual(read_files(archive), {})
+                else:
+                    with self.assertRaisesRegex(ValueError, 'filesystem entry'):
+                        read_files(archive)
+
     def test_accepts_static_elf_for_both_native_architectures(self):
         check_elf(binary(), 'arm64')
         check_elf(binary(architecture=62), 'amd64')
