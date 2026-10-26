@@ -42,7 +42,8 @@ oversized field is replaced whole so a cut JSON prefix cannot leak a sensitive k
 The browser console serializer visits at most 128 values, six nesting levels, 32 keys per object and 16 arguments,
 with a 12,000-character working budget and about 12 KiB of UTF-8 output. Action capture queues at most 128 pending
 events, with accessible names capped at 128 characters, element descriptions at 256 (64 per attribute value) and
-navigation paths at 512; an event is stamped with its own time and emitted on the next timer turn, after synchronous
+navigation paths at 512; an event is stamped with its own time, capped at capture wall time if the monotonic clock
+runs ahead, and emitted on the next timer turn, after synchronous
 handlers have had a chance to link their fetches.
 Export transport diagnostics are excluded to avoid feedback loops (`interfaces.md`).
 
@@ -89,6 +90,11 @@ Every buffer is bounded; on overflow the oldest entry is dropped and ingest is n
 | SSE clients | 16 | `503` for the 17th |
 | SSE broadcast buffer | 4,096 events | Lagging client gets `resync` |
 | SDK export queues (both SDKs) | 2,048 spans and 2,048 logs separately | Drop new records, the app is not affected |
+| Declared node metadata | Per-resource input and field bounds in `interfaces.md`, enforced by `conventions/src/node_metadata.rs` | Ignore malformed/oversized input; omit excess entries. Telemetry still ingests |
+
+Node metadata normalization runs before the store lock, once per resource batch, and shares its result across
+records. Its estimated bytes count toward existing span and log retention limits. A valid metadata change emits
+the existing `node` SSE event; no additional queue, cache service, background task or endpoint is introduced.
 
 ## Timeouts and retries
 

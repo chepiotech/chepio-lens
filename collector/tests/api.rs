@@ -19,6 +19,7 @@ use serde_json::Value;
 use tower::ServiceExt;
 
 const DEMO_TRACE: &str = include_str!("fixtures/demo_trace.json");
+const NODE_METADATA: &str = include_str!("fixtures/node_metadata.json");
 /// The demo web's origin; `app()` allows it, as the collector does by default.
 const ORIGIN: &str = "http://localhost:5173";
 
@@ -127,6 +128,94 @@ async fn protobuf_export_appears_on_the_graph() {
     );
     assert!(db["p50_ms"].as_f64().unwrap() >= 4.0);
     assert_eq!(edge(&graph, "svc:demo-web->svc:demo-api")["count"], 1);
+}
+
+#[tokio::test]
+async fn sdk_node_metadata_and_redis_reach_the_graph_from_both_otlp_encodings() {
+    for protobuf in [false, true] {
+        let app = app(Limits::default());
+        let (content_type, body) = if protobuf {
+            (
+                "application/x-protobuf",
+                serde_json::from_str::<ExportTraceServiceRequest>(NODE_METADATA)
+                    .unwrap()
+                    .encode_to_vec(),
+            )
+        } else {
+            ("application/json", NODE_METADATA.as_bytes().to_vec())
+        };
+        assert_eq!(
+            post(&app.otlp, "/v1/traces", content_type, body).await.0,
+            StatusCode::OK
+        );
+        let graph = get_json(&app.ui, "/api/graph").await;
+        let nodes = graph["nodes"].as_array().unwrap();
+        let web = nodes
+            .iter()
+            .find(|node| node["id"] == "svc:demo-web")
+            .unwrap();
+        assert_eq!(
+            web["metadata"]["technologies"],
+            serde_json::json!(["react", "vue"])
+        );
+        assert_eq!(web["metadata"]["pages"], serde_json::json!(["/"]));
+        assert_eq!(
+            web["metadata"]["microfrontends"][0]["pages"],
+            serde_json::json!(["/notes"])
+        );
+        let api = nodes
+            .iter()
+            .find(|node| node["id"] == "svc:demo-api")
+            .unwrap();
+        assert_eq!(
+            api["metadata"]["technologies"],
+            serde_json::json!(["rust", "axum", "sqlx", "tokio"])
+        );
+        assert_eq!(
+            edge(&graph, "svc:demo-api->db:redis:cache:6379/0")["protocol"],
+            "db"
+        );
+        assert!(!graph.to_string().contains("password"));
+        assert!(!graph.to_string().contains("token=fake"));
+    }
+}
+
+#[tokio::test]
+async fn log_resource_metadata_updates_existing_nodes_and_bad_metadata_does_not_erase_it() {
+    let app = app(Limits::default());
+    post(&app.otlp, "/v1/traces", "application/json", DEMO_TRACE).await;
+    let response = app
+        .ui
+        .clone()
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let mut events = response.into_body();
+    for metadata in [r#"{"technologies":["rust","axum"]}"#, "not json"] {
+        let logs = serde_json::json!({"resourceLogs":[{"resource":{"attributes":[
+            {"key":"service.name","value":{"stringValue":"demo-api"}},
+            {"key":"lens.node.metadata","value":{"stringValue":metadata}}
+        ]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"1000000000","severityNumber":9,"body":{"stringValue":"test"}}]}]}]});
+        assert_eq!(
+            post(&app.otlp, "/v1/logs", "application/json", logs.to_string())
+                .await
+                .0,
+            StatusCode::OK
+        );
+        let graph = get_json(&app.ui, "/api/graph").await;
+        let api = graph["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "svc:demo-api")
+            .unwrap();
+        assert_eq!(
+            api["metadata"]["technologies"],
+            serde_json::json!(["rust", "axum"])
+        );
+    }
+    let event = next_event(&mut events, "node").await;
+    assert!(event.contains("axum"));
 }
 
 #[tokio::test]

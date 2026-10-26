@@ -85,6 +85,14 @@ labels and button text are still free text and should not contain secrets. The o
 contain values the application chose to print; redaction applies to exported telemetry. Collector diagnostics never
 repeat accepted or rejected log payloads. Log details are React text, including strings that resemble HTML.
 
+### Declared map metadata
+
+SDK node settings contain static technology identifiers, microfrontend labels and route templates. Both SDKs and
+the collector apply the same field bounds, omit unknown fields and remove page query strings/fragments
+(`interfaces.md`). Absolute and protocol-relative URLs are omitted. Labels and paths remain text, never HTML.
+These are configuration labels, not a place for secrets or user-specific content; arbitrary text inside a name or
+path is not secret detection. Malformed metadata does not reject or disable the accompanying telemetry.
+
 ## Container dependency evidence
 
 The runtime image contains only the static collector, musl's license and build evidence; it has no shell or package

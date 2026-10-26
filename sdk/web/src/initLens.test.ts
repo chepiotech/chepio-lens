@@ -82,6 +82,21 @@ afterEach(async () => {
 })
 
 describe('initLens', () => {
+  it('exports normalized SDK node settings as resource metadata', async () => {
+    const network = fakeNetwork()
+    lens = initLens({ serviceName: 'web-with-microfrontends', endpoint: ENDPOINT,
+      node: { technologies: ['React', 'vue'], pages: ['/?token=fake'],
+        microfrontends: [{ name: 'Notes', framework: 'react', pages: ['/notes?password=fake'] }] },
+    })
+    await fetch('/api/metadata-check')
+    await exportedSpan(network, `${ORIGIN}/api/metadata-check`)
+    const resource = network.exports[0]!.resourceSpans[0]!.resource.attributes
+    const metadata = JSON.parse(String(attr(resource, 'lens.node.metadata')))
+    expect(metadata).toEqual({ technologies: ['react', 'vue'], pages: ['/'],
+      microfrontends: [{ name: 'Notes', framework: 'react', pages: ['/notes'] }] })
+    expect(JSON.stringify(resource)).not.toContain('password')
+  })
+
   it('is a no-op without an endpoint', () => {
     const before = globalThis.fetch
     for (const endpoint of [undefined, '', '   ']) {

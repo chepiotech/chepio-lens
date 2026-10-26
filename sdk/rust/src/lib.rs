@@ -23,6 +23,7 @@ mod rpc;
 mod sqlx_events;
 
 pub use capture::ObservedBody;
+pub use chepio_lens_conventions::node_metadata::{Microfrontend, NodeMetadata};
 pub use client::{ClientLayer, ClientService};
 pub use database::Database;
 pub use http::{HttpLayer, HttpService};

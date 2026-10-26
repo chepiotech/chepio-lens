@@ -1,10 +1,13 @@
 // Core
+use chepio_lens_conventions::keys::LENS_NODE_METADATA;
 use chepio_lens_conventions::keys::{LENS_NODE_KIND, SERVICE_NAME, TELEMETRY_SDK_LANGUAGE};
+use chepio_lens_conventions::node_metadata::NodeMetadata;
 use opentelemetry_proto::tonic::collector::logs::v1::{
     ExportLogsPartialSuccess, ExportLogsServiceRequest, ExportLogsServiceResponse,
 };
 use opentelemetry_proto::tonic::common::v1::any_value;
 use prost::Message;
+use std::sync::Arc;
 // Domain
 use crate::domain::log_record::{LogLevel, LogRecord};
 use crate::domain::span::{AttrValue, Service, SpanId, TraceId};
@@ -43,6 +46,9 @@ impl ProtoCodec {
                 resource_str(TELEMETRY_SDK_LANGUAGE),
                 resource_str(LENS_NODE_KIND),
             );
+            service.metadata = resource_str(LENS_NODE_METADATA)
+                .and_then(NodeMetadata::from_json)
+                .map(Arc::new);
             let service_cut = service.name.len() > 256;
             if service_cut {
                 let mut end = 256;

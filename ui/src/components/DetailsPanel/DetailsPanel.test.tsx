@@ -5,6 +5,22 @@ import { describe, expect, it } from 'vitest'
 import DetailsPanel from './DetailsPanel'
 // Types
 import type { EdgeView } from '../../api/generated/EdgeView'
+import type { NodeView } from '../../api/generated/NodeView'
+
+it('renders SDK page paths and microfrontend names as text, including markup-like labels', () => {
+  const node: NodeView = { id: 'web', label: 'Web', kind: 'frontend', db_system: null,
+    address: null, port: null, namespace: null, first_seen: '0', last_seen: '0',
+    metadata: { technologies: ['react'], pages: ['/'], microfrontends: [
+      { name: '<img src=x onerror=alert(1)>', framework: 'react', pages: ['/<script>alert(1)</script>'] },
+    ] },
+  }
+  const html = renderToString(<DetailsPanel graph={{ nodes: { web: node }, edges: {} }}
+    selection={{ kind: 'node', id: 'web' }} onClose={() => {}} />)
+  expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
+  expect(html).toContain('/&lt;script&gt;alert(1)&lt;/script&gt;')
+  expect(html).not.toContain('<img')
+  expect(html).not.toContain('<script')
+})
 
 describe('edge details', () => {
   it('distinguishes the successful last call from earlier session errors and latency', () => {

@@ -58,3 +58,5 @@ pub const LENS_LOG_TRUNCATED: &str = "lens.log.truncated";
 pub const LENS_ACTION_ID: &str = "lens.action.id";
 /// Rows a statement affected, as the database driver reports them (Postgres also counts the rows of a `SELECT`).
 pub const LENS_DB_AFFECTED_ROWS: &str = "lens.db.affected_rows";
+/// Optional JSON resource metadata used by map cards; bounded by `node_metadata`.
+pub const LENS_NODE_METADATA: &str = "lens.node.metadata";

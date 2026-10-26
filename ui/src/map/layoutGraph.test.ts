@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { EdgeView } from '../api/generated/EdgeView'
 import type { NodeView } from '../api/generated/NodeView'
 // Utils
-import { layoutGraph } from './layoutGraph'
+import { NODE_WIDTH, layoutGraph } from './layoutGraph'
 
 const node = (id: string, kind: NodeView['kind']): NodeView => ({
   id,
@@ -80,5 +80,13 @@ describe('layoutGraph', () => {
     const cycle = [edge('svc:a', 'svc:b'), edge('svc:b', 'svc:a')]
     const positions = layoutGraph([node('svc:a', 'service'), node('svc:b', 'service')], cycle)
     expect(positions.size).toBe(2)
+  })
+
+  it('keeps expanded containers separated and centers their complete bounds', () => {
+    const list = [node('a', 'frontend'), node('b', 'frontend')]
+    const sizes = new Map([['a', { width: NODE_WIDTH, height: 600 }], ['b', { width: NODE_WIDTH, height: 350 }]])
+    const positions = layoutGraph(list, [], sizes)
+    expect(positions.get('a')!.y + 300).toBeLessThan(positions.get('b')!.y - 175)
+    expect(positions.get('a')!.y - 300).toBe(-(positions.get('b')!.y + 175))
   })
 })

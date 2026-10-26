@@ -1,9 +1,9 @@
 // Utils
-import { NODE_HEIGHT, NODE_WIDTH, type Point } from './layoutGraph'
+import { NODE_HEIGHT, NODE_WIDTH, type NodeSize, type Point } from './layoutGraph'
 
 export type Camera = { x: number; y: number; scale: number }
 
-export const MIN_SCALE = 0.25
+export const MIN_SCALE = 0.01
 export const MAX_SCALE = 3
 
 export function toWorld(camera: Camera, screen: Point): Point {
@@ -22,14 +22,12 @@ export function zoomAt(camera: Camera, anchor: Point, factor: number): Camera {
 }
 
 /** Camera that shows every point with `padding` screen pixels around, never zooming in past 1:1. */
-export function fitCamera(points: Point[], width: number, height: number, padding = 48): Camera {
+export function fitCamera(points: (Point & Partial<NodeSize>)[], width: number, height: number, padding = 48): Camera {
   if (points.length === 0) return { x: width / 2, y: height / 2, scale: 1 }
-  const xs = points.map((p) => p.x)
-  const ys = points.map((p) => p.y)
-  const minX = Math.min(...xs) - NODE_WIDTH / 2
-  const maxX = Math.max(...xs) + NODE_WIDTH / 2
-  const minY = Math.min(...ys) - NODE_HEIGHT / 2
-  const maxY = Math.max(...ys) + NODE_HEIGHT / 2
+  const minX = Math.min(...points.map((p) => p.x - (p.width ?? NODE_WIDTH) / 2))
+  const maxX = Math.max(...points.map((p) => p.x + (p.width ?? NODE_WIDTH) / 2))
+  const minY = Math.min(...points.map((p) => p.y - (p.height ?? NODE_HEIGHT) / 2))
+  const maxY = Math.max(...points.map((p) => p.y + (p.height ?? NODE_HEIGHT) / 2))
   const scale = Math.min(
     1,
     Math.max(MIN_SCALE, Math.min((width - 2 * padding) / (maxX - minX), (height - 2 * padding) / (maxY - minY))),
@@ -41,8 +39,8 @@ export function fitCamera(points: Point[], width: number, height: number, paddin
   }
 }
 
-export function insideNode(center: Point, point: Point): boolean {
-  return Math.abs(point.x - center.x) <= NODE_WIDTH / 2 && Math.abs(point.y - center.y) <= NODE_HEIGHT / 2
+export function insideNode(center: Point, point: Point, size: NodeSize = { width: NODE_WIDTH, height: NODE_HEIGHT }): boolean {
+  return Math.abs(point.x - center.x) <= size.width / 2 && Math.abs(point.y - center.y) <= size.height / 2
 }
 
 /** Cubic curve from the right side of `from` to the left side of `to`; control points keep it horizontal at both ends. */

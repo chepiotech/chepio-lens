@@ -25,3 +25,12 @@ HTTP admission limits. `sdk/rust/src/app_logs.rs` tests context, filters, maskin
 HTTP transport diagnostics cannot create an endless export loop (I1). `sdk/web/src/logCapture/logCapture.test.ts`
 checks unchanged console calls, diagnostics suppression, bounded serialization, listener lifecycle and synchronous
 correlation; browser coverage is in `demo/e2e/tests/app-logs.spec.ts`.
+
+Node-card coverage (2026-10-26): `conventions::node_metadata::tests::bounds_and_invalid_metadata_never_escape_to_the_wire`
+and shared Rust/TypeScript vectors enforce I9's metadata bounds. `collector/tests/api.rs` tests
+`sdk_node_metadata_and_redis_reach_the_graph_from_both_otlp_encodings` and
+`log_resource_metadata_updates_existing_nodes_and_bad_metadata_does_not_erase_it` preserve I4/I6: Redis comes
+from a database client span, while settings only decorate service nodes. `ui/src/map/nodeCards/nodeCards.test.ts`
+checks that outgoing API destinations never become frontend pages and that observed navigation stays bounded.
+`ui/src/components/DetailsPanel/DetailsPanel.test.tsx` verifies I11 for SDK page paths and microfrontend names that
+look like executable HTML.

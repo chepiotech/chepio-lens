@@ -92,6 +92,7 @@ mod tests {
             label: id.into(),
             db: None,
             external: None,
+            metadata: None,
             first_seen_ns: 1,
             last_seen_ns: 2,
         })

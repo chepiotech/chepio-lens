@@ -9,6 +9,8 @@ export default defineConfig(({ mode }) => {
   const { LENS_COLLECTOR_URL = 'http://127.0.0.1:4320' } = loadEnv(mode, '.', 'LENS_')
   return {
     plugins: [react()],
+    // The collector's default-src 'self' CSP disallows data: image URLs, including small technology logos.
+    build: { assetsInlineLimit: 0 },
     server: { port: 5174, strictPort: true, proxy: { '/api': LENS_COLLECTOR_URL, '/healthz': LENS_COLLECTOR_URL } },
   }
 })

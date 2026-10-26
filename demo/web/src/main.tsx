@@ -10,7 +10,9 @@ import App from './components/App/App'
 if (import.meta.env.DEV && import.meta.env.VITE_CHEPIO_LENS_ENDPOINT) {
   try {
     const { initLens } = await import('chepio-lens-web')
-    initLens({ serviceName: 'demo-web', endpoint: import.meta.env.VITE_CHEPIO_LENS_ENDPOINT })
+    initLens({ serviceName: 'demo-web', endpoint: import.meta.env.VITE_CHEPIO_LENS_ENDPOINT,
+      node: { technologies: ['react'], pages: ['/'] },
+    })
   } catch (error) {
     console.warn('chepio-lens: tracing is off', error)
   }

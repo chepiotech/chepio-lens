@@ -1,0 +1,64 @@
+.settings-dialog {
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 1rem;
+  background: #1b1e25;
+  color: #e6e8eb;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: auto;
+  font-size: 0.875rem;
+}
+.settings-dialog::backdrop { background: rgba(0, 0, 0, 0.65); }
+.settings-dialog__layout { display: grid; grid-template-columns: 11.5rem minmax(0, 1fr); min-height: 27rem; }
+.settings-dialog__sidebar { padding: 1.5rem 0.75rem; background: #15181e; }
+.settings-dialog h2 { margin: 0 0.75rem 1.75rem; font-size: 1.125rem; font-weight: 600; }
+.settings-dialog__tabs { display: flex; flex-direction: column; gap: 0.25rem; }
+.settings-dialog__tabs button {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #aeb6c3;
+  text-align: left;
+}
+.settings-dialog__tabs button[aria-selected='true'] { background: #2a2f39; color: #f1f3f7; }
+.settings-dialog__tabs button:hover { background: #242933; color: #f1f3f7; }
+.settings-dialog__content { min-width: 0; padding: 1.75rem 2rem 2rem; }
+.settings-dialog h3 { margin: 0 2rem 1.5rem 0; font-size: 1rem; font-weight: 600; }
+.settings-dialog__close { position: absolute; top: 0.75rem; right: 0.75rem; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; padding: 0; border: 0; border-radius: 0.5rem; color: #b6becb; background: transparent; }
+.settings-dialog__close:hover { background: #303642; color: #fff; }
+.settings-dialog__row { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; min-height: 2.75rem; padding: 1rem 0; border-bottom: 1px solid #30353f; }
+.settings-dialog__row > div { min-width: 0; }
+.settings-dialog__row p, .settings-dialog__hint { margin: 0.375rem 0 0; color: #aeb6c3; font-size: 0.8125rem; line-height: 1.6; }
+.settings-dialog__hint { margin-top: 1.25rem; }
+.settings-dialog__value { color: #b9c1ce; font-variant-numeric: tabular-nums; text-align: right; }
+.settings-dialog button, .settings-dialog select { font: inherit; cursor: pointer; }
+.settings-dialog__action, .settings-dialog select { flex-shrink: 0; box-sizing: border-box; max-width: 55%; min-height: 2.5rem; padding: 0.5rem 0.75rem; border: 1px solid #454d5b; border-radius: 0.5rem; background: #252a34; color: #e6e8eb; text-decoration: none; }
+.settings-dialog__action:hover { background: #333b49; }
+.settings-dialog__action--danger { color: #ffacb9; }
+.settings-dialog button:disabled { opacity: 0.5; cursor: wait; }
+.settings-dialog__status { font-size: 0.8125rem; }
+.settings-dialog__status--live { color: #acd68d; }
+.settings-dialog__status--connecting { color: #e0bf87; }
+.settings-dialog__status--offline, .settings-dialog__error { color: #ffacb9; }
+.settings-dialog :focus-visible { outline: 2px solid #8bb9ff; outline-offset: 3px; }
+.settings-dialog .map-legend { position: static; max-width: none; max-height: none; margin-top: 1.5rem; border: 0; border-radius: 0; background: transparent; }
+.settings-dialog .map-legend__summary { padding: 0.75rem 0; color: #e6e8eb; }
+.settings-dialog .map-legend__list { grid-template-columns: minmax(0, 1fr); gap: 0.75rem; padding: 0.5rem 0; }
+@media (max-width: 600px) {
+  .settings-dialog__layout { grid-template-columns: minmax(0, 1fr); min-height: 29rem; }
+  .settings-dialog__sidebar { padding: 1.25rem 1rem 0.75rem; }
+  .settings-dialog h2 { margin: 0 0 1.25rem; }
+  .settings-dialog__tabs { flex-direction: row; }
+  .settings-dialog__tabs button { flex: 1; justify-content: center; gap: 0.375rem; padding-inline: 0.5rem; }
+  .settings-dialog__tabs svg { width: 1rem; }
+  .settings-dialog__content { padding: 1.5rem 1.25rem; }
+  .settings-dialog__row { gap: 1rem; }
+}

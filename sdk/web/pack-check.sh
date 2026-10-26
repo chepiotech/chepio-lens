@@ -43,9 +43,11 @@ cat > tsconfig.json <<'JSON'
 }
 JSON
 cat > main.ts <<'TS'
-import { initLens } from 'chepio-lens-web'
+import { initLens, type NodeMetadata } from 'chepio-lens-web'
 
-const lens = initLens({ serviceName: 'pack-check', endpoint: '' })
+const node: NodeMetadata = { technologies: ['react'], pages: ['/'],
+  microfrontends: [{ name: 'Notes', framework: 'vue', pages: ['/notes'] }] }
+const lens = initLens({ serviceName: 'pack-check', endpoint: '', node })
 void lens.shutdown()
 TS
 npm install --silent --no-audit --no-fund "$tarball" "typescript@$typescript"

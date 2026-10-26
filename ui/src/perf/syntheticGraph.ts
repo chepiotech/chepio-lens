@@ -30,7 +30,13 @@ export function syntheticGraph(edgeCount = 100, seed = 42): { nodes: NodeView[];
       id: `${kind}:${String(i).padStart(2, '0')}`,
       kind,
       label: `${kind}-${i}`,
-      db_system: kind === 'database' ? 'postgresql' : null,
+      db_system: kind === 'database' ? (i % 3 === 0 ? 'redis' : 'postgresql') : null,
+      metadata: kind === 'frontend' ? {
+        technologies: ['react', 'vue'], pages: ['/'], microfrontends: [
+          { name: 'Notes', framework: 'react', pages: ['/notes', '/notes/:id'] },
+          { name: 'Workspace', framework: 'vue', pages: ['/settings'] },
+        ],
+      } : kind === 'service' ? { technologies: ['rust', 'axum', 'sqlx', 'tokio'], pages: [], microfrontends: [] } : undefined,
       address: null,
       port: null,
       namespace: null,
@@ -59,7 +65,8 @@ export function syntheticGraph(edgeCount = 100, seed = 42): { nodes: NodeView[];
       p50_ms: 1 + next() * 50,
       p95_ms: 5 + next() * 400,
       rate_per_s: next() * 50,
-      routes: [],
+      routes: (to.kind === 'database' ? to.db_system === 'redis' ? ['GET notes', 'SET notes'] : ['SELECT notes', 'INSERT notes']
+        : ['GET /api/notes', 'POST /api/notes', 'DELETE /api/notes/:id']).map((route) => ({ route, count: 1, errors: 0, mean_ms: 1, max_ms: 1 })),
       last_seen: '0',
     })
   }
