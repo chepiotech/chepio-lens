@@ -12,8 +12,10 @@ trap 'rm -rf "$app"' EXIT
 ./pack.sh "$app/pack" >/dev/null
 tarball=$(ls "$app"/pack/chepio-lens-web-*.tgz)
 
-tar -tzf "$tarball" | grep -q 'package/LICENSE-APACHE' || { echo "FAIL: the tarball has no license texts" >&2; exit 1; }
-if tar -tzf "$tarball" | grep -q '\.test\.ts$'; then echo "FAIL: the tarball contains tests" >&2; exit 1; fi
+# Read the complete archive before matching: grep -q can close a pipe early and make tar fail under pipefail.
+tar -tzf "$tarball" > "$app/contents.txt"
+grep -qx 'package/LICENSE-APACHE' "$app/contents.txt" || { echo "FAIL: the tarball has no license texts" >&2; exit 1; }
+if grep -q '\.test\.ts$' "$app/contents.txt"; then echo "FAIL: the tarball contains tests" >&2; exit 1; fi
 
 cd "$app"
 cat > package.json <<'JSON'
