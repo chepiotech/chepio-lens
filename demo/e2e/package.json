@@ -6,6 +6,7 @@
   "scripts": {
     "e2e": "playwright test",
     "perf": "playwright test --config playwright.perf.config.ts",
+    "sdk-overhead": "playwright test --config playwright.sdk-overhead.config.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
