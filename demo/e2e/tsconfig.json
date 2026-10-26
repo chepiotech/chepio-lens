@@ -3,7 +3,9 @@
   "include": [
     "tests",
     "perf",
+    "sdk-overhead",
     "playwright.config.ts",
-    "playwright.perf.config.ts"
+    "playwright.perf.config.ts",
+    "playwright.sdk-overhead.config.ts"
   ]
 }

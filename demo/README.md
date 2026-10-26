@@ -91,6 +91,16 @@ The default run takes about 9 minutes and adds 100 notes of 1000 characters, del
 `--modes`, `--rate`, `--workers`, `--seconds` and `--rounds` change the setup; results go to
 `docs/architecture/quality-attributes.md`.
 
+`pnpm --filter demo-e2e sdk-overhead` measures the same for the web SDK in Chromium: a bench page
+(`demo/web/sdk-overhead.html`, development only) sends the same request mix with `fetch` to a fixed in-process API of
+its dev server, once per mode (without the SDK, exporting without bodies, with bodies, collector unreachable), each
+slot in a fresh browser context, round after round. It prints latency percentiles, main-thread time per request and
+long tasks, with the difference to the page without the SDK, and fails above 1 ms added at p95 or on any failed
+request. It starts the bench page on `127.0.0.1:5186` and a release collector of its own on `127.0.0.1:34318`/`34320`
+(the first run builds it), so the demo stack can stay up. The default run takes about 9 minutes;
+`SDK_OVERHEAD_MODES`, `SDK_OVERHEAD_RATE`, `SDK_OVERHEAD_WORKERS`, `SDK_OVERHEAD_SECONDS` and `SDK_OVERHEAD_ROUNDS`
+change the setup.
+
 ## Run without Docker
 
 ```sh
