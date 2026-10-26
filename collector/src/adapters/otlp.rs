@@ -2,10 +2,12 @@
 //! to stable ones here, once (I8); attribute values over the collector's limit are cut and marked.
 
 // Core
+use chepio_lens_conventions::grpc;
 use chepio_lens_conventions::keys::{
     HTTP_RESPONSE_STATUS_CODE, LENS_NODE_KIND, SERVER_PORT, SERVICE_NAME, TELEMETRY_SDK_LANGUAGE,
     URL_PATH, URL_QUERY,
 };
+use chepio_lens_conventions::keys::{RPC_METHOD, RPC_RESPONSE_STATUS_CODE, RPC_SYSTEM_NAME};
 use chepio_lens_conventions::legacy;
 use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTracePartialSuccess, ExportTraceServiceRequest, ExportTraceServiceResponse,
@@ -147,6 +149,7 @@ impl ProtoCodec {
                 stable.insert(key.to_owned(), AttrValue::Int(number));
             }
         }
+        normalize_rpc(&mut stable);
         (stable, truncated)
     }
 
@@ -205,6 +208,31 @@ impl ProtoCodec {
             }
             _ => false,
         }
+    }
+}
+
+fn normalize_rpc(attributes: &mut Attributes) {
+    if attributes.get(RPC_SYSTEM_NAME).and_then(AttrValue::as_str) != Some("grpc") {
+        return;
+    }
+    if let Some(legacy) = attributes.remove(legacy::RPC_GRPC_STATUS_CODE) {
+        let code = legacy
+            .as_i64()
+            .and_then(|value| u16::try_from(value).ok())
+            .or_else(|| legacy.as_str().and_then(|value| value.parse().ok()));
+        if let Some(status) = code.and_then(grpc::status_name) {
+            attributes
+                .entry(RPC_RESPONSE_STATUS_CODE.to_owned())
+                .or_insert_with(|| AttrValue::Str(status.to_owned()));
+        }
+    }
+    if let Some(AttrValue::Str(service)) = attributes.remove(legacy::RPC_SERVICE)
+        && let Some(AttrValue::Str(method)) = attributes.get_mut(RPC_METHOD)
+        && !method.contains('/')
+        && method != "_OTHER"
+        && let Some(qualified) = grpc::method(&format!("{service}/{method}"))
+    {
+        *method = qualified.to_owned();
     }
 }
 
@@ -279,6 +307,37 @@ mod tests {
     use super::*;
 
     const JSON: &str = include_str!("../../tests/fixtures/legacy_names.json");
+
+    #[test]
+    fn current_rpc_status_and_method_win_over_legacy_values() {
+        let mut attributes = Attributes::from([
+            (RPC_SYSTEM_NAME.into(), AttrValue::Str("grpc".into())),
+            (RPC_RESPONSE_STATUS_CODE.into(), AttrValue::Str("OK".into())),
+            (
+                RPC_METHOD.into(),
+                AttrValue::Str("current.Service/Call".into()),
+            ),
+            (
+                legacy::RPC_GRPC_STATUS_CODE.into(),
+                AttrValue::Str("13".into()),
+            ),
+            (
+                legacy::RPC_SERVICE.into(),
+                AttrValue::Str("old.Service".into()),
+            ),
+        ]);
+        normalize_rpc(&mut attributes);
+        assert_eq!(
+            attributes[RPC_RESPONSE_STATUS_CODE],
+            AttrValue::Str("OK".into())
+        );
+        assert_eq!(
+            attributes[RPC_METHOD],
+            AttrValue::Str("current.Service/Call".into())
+        );
+        assert!(!attributes.contains_key(legacy::RPC_GRPC_STATUS_CODE));
+        assert!(!attributes.contains_key(legacy::RPC_SERVICE));
+    }
 
     #[test]
     fn json_with_legacy_names_is_normalized_once() {

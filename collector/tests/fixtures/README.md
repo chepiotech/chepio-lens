@@ -12,3 +12,7 @@
 To record again: run a server that saves `POST /v1/traces` bodies, start the demo API with `--features lens` and
 `CHEPIO_LENS_ENDPOINT` pointing at it, and send the request. For browser batches the server must also answer CORS
 preflights from the demo web's origin, and the demo web must call `initLens` with that server as `endpoint`. Fixtures contain only demo data and no secrets.
+
+`grpc_chain.json` is synthetic OTLP/JSON: browser → gateway → gRPC identity → PostgreSQL. The RPC uses current
+client and legacy server attributes; both have HTTP 200 and an INTERNAL RPC status, with no explicit span error.
+API tests also send a later successful variant and reverse batch order to check recovery and normalization.

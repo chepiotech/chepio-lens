@@ -18,6 +18,10 @@ the main risk: they carry passwords, tokens and personal data (ADR-0004).
   listens on `0.0.0.0` inside the container, and compose publishes the ports to `127.0.0.1` on the host only
   (`127.0.0.1:4318:4318`), in `demo/compose.yaml` and in `collector/compose.yaml`; `collector/image-smoke.sh` checks
   the published addresses.
+  For a local Kubernetes cluster the development manifest explicitly binds inside the pod and uses a ClusterIP
+  service with loopback port-forwarding; no Ingress, NodePort or LoadBalancer. Its NetworkPolicy restricts ingest to
+  labelled app pods in the same namespace and blocks collector egress. Policy enforcement requires a supporting CNI;
+  other policies are additive. This is not a deployment configuration for shared or production clusters.
 - **No production, no shared networks.** Without authentication, anyone who reaches the ports reads all captured
   payloads. Production mode (auth, TLS, sampling) is a separate future decision (ADR-0003).
 - **SDKs are off by default.** Without `CHEPIO_LENS_ENDPOINT` (or an empty endpoint in the browser) the SDK is a
@@ -46,6 +50,13 @@ masked value is the string `[REDACTED]`.
 | SQL | `db.query.text` is kept: parameterized queries contain placeholders, not values. Parameter values are never captured: they have no names, so key-based masking could not protect them (ADR-0010) |
 
 ### Body capture
+
+Outbound Tower instrumentation preserves the request body type: request headers and declared size are recorded,
+and the server layer captures request text. Response text follows the same redaction and size limits as below.
+Native gRPC captures neither message content nor arbitrary request/response metadata, even for `application/grpc+json`.
+Only bounded method names, protocol status, endpoint and sizes are recorded; `grpc-message`, status details, binary
+metadata and transport error strings are never exported. Unknown method paths containing query/escape characters
+or over 512 bytes are omitted. See ADR-0015.
 
 - Bodies are captured as text only for `application/json`, `*+json`, `application/x-www-form-urlencoded` and
   `text/*`; for other content types only the size and the content-type header are recorded.

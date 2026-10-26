@@ -28,14 +28,15 @@ and arrays retain their keys through redaction. Retention and per-record limits 
 
 ### Attributes the collector reads
 
-Stable OpenTelemetry semantic conventions; the legacy names in brackets are mapped to stable names at ingest, once
-(I8); a stable name present in the same span wins. Exact keys: `conventions/src/keys.rs`, mapping:
+OpenTelemetry semantic conventions (RPC uses the 1.44.0 release candidate, ADR-0015); legacy names in brackets are
+mapped to current names at ingest, once (I8); a current name present in the same span wins. Exact keys: `conventions/src/keys.rs`, mapping:
 `conventions/src/legacy.rs`.
 
 | Purpose | Attributes |
 |---|---|
 | Node identity | resource `service.name`, resource `telemetry.sdk.language` (`webjs` = browser) |
 | HTTP | `http.request.method` (`http.method`), `url.full` (`http.url`), `url.path` + `url.query` (`http.target`), `http.route`, `http.response.status_code` (`http.status_code`), `server.address` + `server.port` (`net.peer.name` + `net.peer.port`), `http.request.header.<name>`, `http.response.header.<name>`, `http.request.body.size`, `http.response.body.size` |
+| gRPC | `rpc.system.name = grpc` (`rpc.system`), qualified `rpc.method` (legacy `rpc.service` + `/` + `rpc.method`), `rpc.method_original`, string `rpc.response.status_code` (legacy numeric `rpc.grpc.status_code` mapped to its name), `server.address`, `server.port` |
 | Database | `db.system.name` (`db.system`), `db.namespace` (`db.name`), `db.query.text` (`db.statement`), `db.operation.name`, `db.collection.name`, `server.address`, `server.port` |
 | Errors | span status, `error.type`, `exception` span events |
 
@@ -70,6 +71,24 @@ let app = Router::new() /* routes */ .layer(lens.http_layer());
 
 - Server spans: one per request, joined to the caller via `traceparent`; name `<method> <route>`; attributes
   `http.request.method`, `url.path`, `url.query`, `http.route`, `http.response.status_code`; status error for 5xx.
+- Outbound: `lens.client_layer().layer(client)` wraps a hyper client or tonic channel (`tower::Layer`). It propagates
+  `traceparent` from a new client span under the current context. Readiness and transport errors are unchanged;
+  requests keep their concrete body type. HTTP attributes include method, path, redacted query, scheme, server
+  address/port and response status; HTTP 4xx/5xx mark client spans as errors. Request headers and declared size are
+  captured, but client request bodies are not; the instrumented callee captures them. Response bodies use the same
+  capture limits as server spans. `ObservedBody<B>` preserves the underlying response frames and error type.
+  `.with_endpoint(uri)` supplies a channel's endpoint when its request has no authority; only host/port/scheme are
+  recorded, and the request destination is never changed.
+- Native gRPC: `http_layer()` on `tonic::transport::Server::builder()` and `client_layer()` on the channel detect
+  `application/grpc` or `application/grpc+…`. RPC status is read from response headers or final trailers; HTTP 200
+  alone is not success. Client non-OK statuses are errors; server errors are UNKNOWN, DEADLINE_EXCEEDED,
+  UNIMPLEMENTED, INTERNAL, UNAVAILABLE and DATA_LOSS. Missing/invalid status, body errors and cancellation are
+  failures. Error categories are status names or fixed `grpc.missing_status`, `grpc.invalid_status`, `body.error`,
+  `transport.error`, `service.error`, `http.status_error`, `cancelled`; transport messages are never exported.
+  Both layers accept `.with_rpc_methods(&["package.Service/Call"])` with a static list. Other methods use `_OTHER`
+  and a valid bounded path in `rpc.method_original` (at most 512 bytes); span name is the known method or `grpc`.
+  Payloads and arbitrary metadata are omitted, including `grpc-message` and `grpc-status-details-bin`. Streaming
+  spans stay open through trailers/body completion and restore their context while polling. gRPC-Web is not covered.
 - Headers and bodies: every request and response header as `http.request.header.<name>` /
   `http.response.header.<name>` (string array, sensitive names masked); bodies of text content types as
   `lens.http.request.body` / `lens.http.response.body` with `lens.http.*.body.truncated` and `http.*.body.size`, by
@@ -156,8 +175,10 @@ one per stored span or app/action record, the same shape as an entry of `GET /ap
 `/api/graph` again).
 
 Each hop has a `packet` for the map's packet icons, or `null` when its caller span is no longer stored:
-`kind` (`http`, `https`, `sql`), `operation` (HTTP method or SQL operation in upper case, `null` if unknown or not one
-short word), `request_body` and `response_body` (`none`, `json`, `form`, `text`, `binary`), `status_code` and `error`.
+`kind` (`http`, `https`, `sql`, `grpc`), `operation` (HTTP method or SQL operation in upper case; qualified gRPC method,
+at most 512 bytes; `null` when unknown), `request_body` and `response_body` (`none`, `json`, `form`, `text`, `binary`),
+`status_code`, `rpc_status` and `error`. gRPC packets use binary body kinds without capturing content, a named
+`rpc_status` from the fixed protocol status set, and no HTTP `status_code`; non-gRPC packets have `rpc_status: null`.
 The collector takes each value from the hop's caller span and falls back to the callee's server span: the scheme
 from `url.scheme` or `url.full`; body kinds from the `content-type` header attributes (`+json` counts as JSON,
 `multipart/form-data` as form, `text/*` as text, other types with bytes as binary), and size `0` means no body; the

@@ -16,6 +16,7 @@ export const PACKET_COLORS = {
   sqlOther: '#bb9af7',
   level: { trace: '#565f89', debug: '#a9b1d6', info: '#7dcfff', warn: '#e0af68', error: '#f7768e', fatal: '#f7768e' },
   action: '#bb9af7',
+  grpc: '#bb9af7',
 } as const
 
 /** How long a log record or user action stays at its node. */
@@ -47,14 +48,16 @@ const lock = (packet: PacketView) => (packet.kind === 'https' ? 'lock' : null)
 /** The request on its way to the callee: a document with its body type and method, or a query by operation. */
 export function requestGlyph(packet: PacketView): Glyph {
   if (packet.kind === 'sql') return { icon: 'database', color: sqlColor(packet.operation), badge: null, label: packet.operation }
+  if (packet.kind === 'grpc') return { icon: 'file-digit', color: PACKET_COLORS.grpc, badge: null, label: 'gRPC' }
   return { icon: bodyIcon(packet.request_body), color: PACKET_COLORS.request, badge: lock(packet), label: packet.operation }
 }
 
 /** The response on its way back with its status code; red with a crossed document when the call failed. */
 export function responseGlyph(packet: PacketView): Glyph {
-  const status = packet.status_code === null ? null : String(packet.status_code)
+  const status = packet.kind === 'grpc' ? packet.rpc_status : packet.status_code === null ? null : String(packet.status_code)
   if (packet.error) return { icon: 'file-x', color: PACKET_COLORS.error, badge: lock(packet), label: status ?? 'error' }
   if (packet.kind === 'sql') return { icon: 'rows-3', color: sqlColor(packet.operation), badge: null, label: null }
+  if (packet.kind === 'grpc') return { icon: 'file-digit', color: PACKET_COLORS.response, badge: null, label: status ?? '?' }
   return { icon: bodyIcon(packet.response_body), color: PACKET_COLORS.response, badge: lock(packet), label: status }
 }
 
@@ -97,6 +100,7 @@ export const LEGEND: { glyph: Glyph; text: string }[] = [
   { glyph: { icon: 'file-text', color: PACKET_COLORS.request, badge: null, label: null }, text: 'Form or text body' },
   { glyph: { icon: 'file-digit', color: PACKET_COLORS.request, badge: null, label: null }, text: 'Binary body' },
   { glyph: { icon: 'file', color: PACKET_COLORS.request, badge: 'lock', label: null }, text: 'HTTPS' },
+  { glyph: { icon: 'file-digit', color: PACKET_COLORS.grpc, badge: null, label: 'gRPC' }, text: 'gRPC call; response shows RPC status' },
   { glyph: { icon: 'file-braces', color: PACKET_COLORS.response, badge: null, label: '200' }, text: 'Response on its way back' },
   { glyph: { icon: 'file-x', color: PACKET_COLORS.error, badge: null, label: '500' }, text: 'Failed call' },
   { glyph: { icon: 'database', color: PACKET_COLORS.sql.SELECT!, badge: null, label: 'SELECT' }, text: 'SQL query; colour by operation' },

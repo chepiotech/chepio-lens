@@ -7,9 +7,13 @@ import type { PacketKindView } from "./PacketKindView";
  */
 export type PacketView = { kind: PacketKindView, 
 /**
- * HTTP method or SQL operation, upper case.
+ * HTTP method or SQL operation (upper case), or qualified gRPC method.
  */
 operation: string | null, request_body: BodyKindView, response_body: BodyKindView, status_code: number | null, 
+/**
+ * gRPC status name; separate from the HTTP transport status.
+ */
+rpc_status: string | null, 
 /**
  * The edge's rule: the caller or the callee failed.
  */
