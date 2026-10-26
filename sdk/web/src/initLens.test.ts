@@ -220,8 +220,24 @@ describe('initLens with a broken collector', () => {
     await lens.shutdown()
 
     const exported = network.spans().filter((span) => span.name === 'burst').length
-    // At most the queue (2,048) plus the one batch (512) taken out for export while the loop ran.
+    // At most the queue (2,048) plus the one batch (64) taken out for export while the loop ran.
     expect(exported).toBeGreaterThanOrEqual(2_048)
-    expect(exported).toBeLessThanOrEqual(2_048 + 512)
+    expect(exported).toBeLessThanOrEqual(2_048 + 64)
+  })
+
+  // A failed export retries its whole batch on the main thread, so batches stay small (quality-attributes.md, run H).
+  it('exports at most 64 spans per request', async () => {
+    const network = fakeNetwork()
+    lens = initLens({ serviceName: 'demo-web', endpoint: ENDPOINT })
+    const tracer = trace.getTracer('test')
+
+    for (let i = 0; i < 200; i += 1) tracer.startSpan('batched').end()
+    await lens.shutdown()
+
+    const sizes = network.exports.map((batch) =>
+      batch.resourceSpans.flatMap((resource) => resource.scopeSpans.flatMap((scope) => scope.spans)).length,
+    )
+    expect(sizes.reduce((sum, size) => sum + size, 0)).toBe(200)
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(64)
   })
 })
