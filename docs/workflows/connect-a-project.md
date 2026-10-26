@@ -23,6 +23,8 @@ CHEPIO_LENS_CORS_ORIGINS=http://localhost:5173 docker compose -f collector/compo
 - Without Docker, install it from a clone (README, "Run the collector") and start `chepio-lens`.
 
 Open http://localhost:4320: the map says it is waiting for spans.
+The image has no shell. Use HTTP for health checks; projects that scan dependencies should also scan the native
+inventory and Cargo.lock under `/usr/share/chepio-lens-build/` (see [image evidence](../architecture/security.md#container-dependency-evidence)).
 
 ## 2. Connect the backend
 
