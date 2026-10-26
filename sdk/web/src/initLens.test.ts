@@ -193,6 +193,23 @@ describe('initLens with a broken collector', () => {
     expect(ms).toBeLessThan(4_500)
   }, 10_000)
 
+  it('shuts down without an error when the collector is not running and spans and logs are queued', async () => {
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : new URL(String(input), ORIGIN).href
+      if (url.startsWith(ENDPOINT)) throw new TypeError('Failed to fetch')
+      return new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    lens = initLens({ serviceName: 'demo-web', endpoint: ENDPOINT })
+
+    trace.getTracer('test').startSpan('queued').end()
+    console.info('queued log record')
+    const { value, ms } = await timed(() => lens?.shutdown() ?? Promise.resolve())
+
+    expect(value).toBeUndefined()
+    expect(ms).toBeLessThan(4_500)
+  }, 10_000)
+
   // I9: the export queue is bounded; overflow drops spans instead of growing.
   it('drops spans beyond the export queue', async () => {
     const network = fakeNetwork()
